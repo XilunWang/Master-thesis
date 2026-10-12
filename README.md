@@ -22,7 +22,9 @@
 
 ### 当前阻碍与同步状态
 
-- 服务器 SSH 正常；UIIS 短训练已完成，代码、README 与报告同步到本地及服务器，权重保留在服务器。
+- 2026-10-12 晚间重连：网络授权后 SSH 能进入认证阶段，但本地 .local/id_ed25519 报 Permission denied；申请该文件读取权限后仍失败，Get-Acl 也被拒绝。当前执行账户为 codexsandboxonline；具体 ACL 原因尚无法确认。尚未登录，GPU 和文件状态未核验，未启动训练；本次 README 无法同步服务器。
+
+- 此前服务器 SSH 正常；UIIS 短训练已完成，代码、README 与报告同步到本地及服务器，权重保留在服务器。
 - GitHub 连接超时已通过项目级代理 `http://127.0.0.1:7890` 修复，fetch 已验证成功。该配置仅保存在本机仓库配置中，依赖本机代理运行。
 - Codex 执行环境读取 Windows GitHub 凭据时仍被拒绝访问，自动推送问题未解决。最近一次推送失败，不能把本地提交视为已经上传 GitHub。
 - 本次核对开始时，本地分支与已知 origin/master 一致（此前提交已同步）；但本次 Codex 自动推送仍报凭据调用 NtCreateDirectoryObject 0xC0000022，新文档提交不能记为已推送。最新同步状态以 `git status -sb` 和实际推送结果为准。
