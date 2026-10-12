@@ -165,6 +165,20 @@ COCO 权重的分类层有 80 类，而 UIIS 有 7 类，因此分类层权重�
 
 本文件夹是本地代码的唯一工作目录。Codex 修改这里的文件，VS Code 打开同一目录即可看到修改。不要在本地和服务器分别修改同一份代码。
 
+## 正式一轮训练就绪检查（2026-10-12 晚间）
+
+已在服务器重新构建候选配置和真实训练数据加载器：MMDetection 3.3.0、MMEngine 0.10.7；训练图片 3937 张、batch 2，每轮 1969 步；COCO 初始权重存在。仅构建加载器，没有启动训练，也没有再次逐图完整读取。
+
+当前不能把现有命令当成已经完成的正式一轮启动工具：prepare-uiis-baseline.py 无参数只输出配置，--profile 固定运行 20 步且关闭 checkpoint。候选配置虽包含 36 轮和每轮保存最近 3 份，但正式启动/恢复入口、后台会话、首轮结束暂停检查以及额外保留 12/24/36 轮尚未实现。因此训练基础具备，完整运行封装还需补齐；正式首轮保存恢复也尚未实测。
+
+本地仓库不是 Mask2Former 全部源码。它导入服务器虚拟环境中的 MMDetection/MMEngine，复用已经安装的模型和训练实现。实测源码位置（服务器路径）：
+
+- `.venv/lib/python3.10/site-packages/mmdet/models/detectors/mask2former.py`：模型入口，30 行，复用父类，不能把这一文件当作全部网络。
+- `.venv/lib/python3.10/site-packages/mmdet/models/dense_heads/mask2former_head.py`：分割头文件，459 行。
+- `.venv/lib/python3.10/site-packages/mmdet/models/layers/msdeformattn_pixel_decoder.py`：像素解码器文件，246 行。
+- `.venv/lib/python3.10/site-packages/mmengine/runner/runner.py`：通用训练管理文件，2413 行。
+
+这些只是部分依赖文件，还包含 ResNet、Transformer 层、损失、数据处理和底层 PyTorch/MMCV 算子。以后适配模块应将自定义代码放在本地项目并注册导入，不直接改服务器 site-packages，保证 VS Code 可见、Git 可追踪。检查结果保存在本地和服务器 `reports/baseline-readiness-audit.json`。
 ## 实验路线
 
 使用 UIIS 数据集，先跑通 MMDetection 的 Mask2Former ResNet-50 基线，再分别验证 WaterMask 模块的适配效果。当前已完成依赖、COCO 单图推理、UIIS 数据准备及 100 次迭代流程测试，尚未进行正式基线训练和模块适配。
@@ -223,3 +237,4 @@ cd /root/autodl-tmp/underwater-segmentation
 | 2026-10-12 | 晚间重连恢复 | 定向授权后 SSH_KEY_OK；V100 显存占用 0，项目目录存在；未启动训练 |
 | 2026-10-12 | 固化开机重连流程 | 新增 check-server.ps1 与 AGENTS 规则；定向授权后约 0.99 秒检查通过，未启动训练 |
 | 2026-10-12 23:15 | 用户关机再开机后的重连验证 | 保持当前 Codex 会话，复用已有授权；首次检查约 1.57 秒返回 SERVER_READY。V100 显存占用 0，环境/标注路径存在，数据盘可用 48GB；未启动训练。此结果不验证 Codex 重启后的授权持久性。 |
+| 2026-10-12 | 核对正式一轮训练就绪程度及源码位置 | 真实加载器 3937 图/1969 步、预训练权重存在；正式入口和阶段备份待实现；未启动训练 |
