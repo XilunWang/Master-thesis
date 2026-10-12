@@ -22,6 +22,8 @@
 
 ### 当前阻碍与同步状态
 
+- 晚间二次诊断已定位：SSH verbose 日志显示 Connection established、Server accepts key，随后 Load key Permission denied。服务器主机指纹与此前一致；本机 codexsandboxonline 无法读取私钥，icacls 查询也被拒绝。网络与服务器公钥登记正常，阻碍在本地文件访问；已授权特定密钥读取及网络后仍未解决。未改动密钥 ACL，未登录或启动训练。
+
 - 2026-10-12 晚间重连：网络授权后 SSH 能进入认证阶段，但本地 .local/id_ed25519 报 Permission denied；申请该文件读取权限后仍失败，Get-Acl 也被拒绝。当前执行账户为 codexsandboxonline；具体 ACL 原因尚无法确认。尚未登录，GPU 和文件状态未核验，未启动训练；本次 README 无法同步服务器。
 
 - 此前服务器 SSH 正常；UIIS 短训练已完成，代码、README 与报告同步到本地及服务器，权重保留在服务器。
