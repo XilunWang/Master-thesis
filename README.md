@@ -393,3 +393,15 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 | 独立维护 | 修复 Codex 自动 GitHub 凭据调用 | 未解决；推送故障不代表训练失败 |
 
 本轮仅修改 README.md、AGENTS.md；不修改数据、训练脚本或成绩，不启动服务器任务。旧版可在 Git 历史查看。文档核验已通过：49 个本地链接有效、17 个脚本均有索引、核心指标和权重哈希与 JSON 一致、时间线提交均存在、代码围栏闭合且无替换乱码，git diff --check 通过；记录在忽略目录 reports/readme-review.json。服务器文件和电源本轮未重新核验。
+
+## 13. 导师汇报材料（持续维护）
+
+2026-10-13 已制作 13 页研究汇报：[打开 PPT](presentations/output/水下实例分割研究进展_20261013_v1.pptx)。沿用用户提供模板的校徽、配色、字体和母版，涵盖数据规则、36轮正式基线、AP指标、WaterMask参考比较、六张固定案例和后续路线。明确当前 P2，尚无模块改进成绩；第二点未定。
+
+[维护说明](presentations/README.md)；[生成源](presentations/build.mjs)；[版本配置](presentations/status.json)。后续每次形成实质研究进展，同步更新 PPT 和 README，并保留旧版本。模板及 PPT 输出保存在本地忽略目录，不随 Git 推送；源代码与维护规则进入版本管理。
+
+检查：13页逐页视觉检查、PPT结构和几何检查通过（零发现），Artifact Tool重导入成功。自动finalizer受本机realpath EPERM阻挡，未完成该完整流水线；已采用独立检查后输出副本，未在PowerPoint原生程序验证。本次未启动训练、未同步服务器；研究成绩未改变。Git同步状态以本次提交和实际推送结果为准。
+
+本次实际 Git 状态：add/commit 被 .git/index.lock Permission denied 阻挡，因此本次未创建提交；push 仍因 Git Credential Manager / MSYS NtCreateDirectoryObject 0xC0000022 失败。本地 PPT 与源文件已保存，不能声称已同步 GitHub。
+
+2026-10-13 本地提交修复：针对本仓库 .git 申请独立写权限后重试，提交范围为上述 6 个汇报源文件和文档；PPT 成品仍保存在 presentations/output（忽略目录）。本地提交是否成功以 Git 返回的提交号为准，远程未同步的历史状态不变。
