@@ -375,3 +375,11 @@ cd /root/autodl-tmp/underwater-segmentation
 | 本次减 WaterMask R101 | +5.4 | +3.9 | +6.0 |
 
 上述差值为 AP 点数，不是相对百分比。当前数字高于 WaterMask 公布值，不代表六张示例没有问题，也不证明模块改进有效。我们使用 COCO 实例分割预训练整模型；对方具体预训练、训练策略、输入尺度和评估设置仍需逐项对齐。论文改进贡献应重点看相同配置下自己的改进模型相对于 Mask2Former 32.6 的增益，不能把原版基线超过历史方法当作自己的创新。服务器未启动；本次只更新本地记录，服务器文档待重连同步。GitHub 自动推送仍以实际输出为准。
+
+### 比较口径补充核实（2026-10-13）
+
+已核对 WaterMask 原 mmdet2 分支 configs/_our_/water_r50_fpn_ms3x.py：max_epochs=36，学习率下降节点为 27/33，SGD lr=0.0025，使用短边 480–800 多尺度缩放。当前 Mask2Former 同为 36 轮、27/33 节点，但使用 AdamW lr=0.0001、LSJ 1024 训练增强及 COCO 整模型预训练，因此不能把“同骨干、同轮数”说成所有条件相同。WaterMask 的 1x 配置继承 Mask R-CNN R50-FPN 并换成 WaterRoIHead/WaterMaskHead；与 Mask2Former 是不同完整架构。官方当前 README 的 R50 3x 配置链接失效，已改读原 mmdet2 分支源码；尚未逐层核实对方预训练加载及论文运行时覆盖参数，不能断言 +6.2 AP 全由架构贡献。
+
+配置来源：https://raw.githubusercontent.com/LiamLian0727/WaterMask/mmdet2/configs/_our_/water_r50_fpn_ms3x.py 。COCO 指标定义：https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py 。AP50/AP75 分别采用掩码 IoU 0.50/0.75 的匹配标准；主 AP 在 0.50 到 0.95、步长 0.05 的十个阈值及类别上平均。AP 综合预测排序、误报和漏检，不是 IoU 本身，也不是像素准确率；绘图置信度 0.5 与 AP50 的 IoU 0.5 是不同概念。
+
+“尚未加入自行设计模块”不等于“模型未经优化”：当前已经使用完整 Mask2Former 架构及预训练，并适配 UIIS 类别及训练配置。WaterMask 内部模块相对其 Mask R-CNN 基础有效，不意味着移植到 Mask2Former 必然有效。上述补充为本地文档更新，服务器待重连同步。
