@@ -1,385 +1,302 @@
 # 水下实例分割实验
 
-## 当前进度（2026-10-13）
+更新日期：2026-10-13。本文统一记录当前状态、实验协议、结果、历史步骤和后续入口。历史记录不作为当前启动指令。
 
-**当前阶段：Mask2Former R50 的 UIIS 正式基线已完成全部 36 轮、70884 次迭代，于 2026-10-13 13:41:41 正常退出（exit=0）。最终权重可加载且模型数值均有限，优化器及学习率调度状态完整；第 12/24/36 轮备份存在。已完成第 36 轮权重在官方 691 张测试图上的评估：segm AP 32.6、AP50 47.6、AP75 35.3；bbox AP 34.3。不需要重复训练。官方 3937/691 原始划分及重复图片保持不变。**
+## 1. 当前状态与下一步
 
-| 步骤 | 状态与验证 |
+**Mask2Former-R50 在 UIIS 上的正式基线训练及评估已完成：36 轮、70884 次迭代，691 张测试图，mask AP 32.6 / AP50 47.6 / AP75 35.3。尚未加入 DSGAT、MFRM、BLL，未复现 WaterMask，也未开展第二研究点。**
+
+- 已完成：环境/GPU 算子检查、数据下载与审计、短训练及恢复测试、正式入口验证、36 轮训练、最终全量评估、前 6 张图片复核、WaterMask 公布结果和部分配置核对。
+- 未完成：更清晰的实例可视化、全数据集误差归因、边界专用指标、模块适配/消融、多随机种子验证、WaterMask 同环境复现、第二研究点和论文正文。
+- 下一步优先在本地利用已保存预测，改进诊断展示，分析漏检、错分类、实例拆分与轮廓问题，再确定第一个模块；这项工作尚未执行。
+- 最后检查时，训练与评估均正常结束。用户随后询问关机，已告知可以普通关机；**是否已实际关机未核验**。本轮只整理文档，未连接或启动服务器。
+- 最终权重最后确认保存在服务器，**尚未完成本地权重备份**。本地已有日志、指标、原始预测和对照图。
+
+优先阅读：[正式评估报告](reports/uiis-baseline-36e-evaluation/report.md)、[完整指标](reports/uiis-baseline-36e-evaluation/metrics.json)、[训练完成核验](reports/training-completion-review.json)。这些产物被 Git 忽略，只克隆 GitHub 仓库不会获得它们。
+
+## 2. 研究目标与讨论范围
+
+任务是水下实例分割：识别类别，并分别分割每一个物体。用户希望控制实验时间、为秋招留出时间，论文希望包含两个研究点、约 100 页；这是规划要求，不是已完成工作量或毕业保证。
+
+| 研究线 | 已讨论内容 | 实际状态 |
+| --- | --- | --- |
+| 第一研究点 | UIIS + Mask2Former，逐步适配 WaterMask 的 DSGAT、MFRM、BLL，验证细节及轮廓等改善 | 基线完成；模块插入位置、适配实现及收益未确定 |
+| 第二研究点 | DINOv2 / DiveSeg 或 TIDE 辅助分析等候选 | 未最终确定、未运行；误差分析工具本身不自动构成独立研究贡献 |
+| 早期备选 | 水下图像与密集标注生成论文启发的数据生成方向 | 仅讨论，未实施，不是当前主线 |
+
+不预设 Mask2Former 一定边界差，也不预设移植模块一定有效。已有模块必须注明来源；直接拼接、页数或实验数量不能单独证明创新。当前模型已有预训练及完整架构，“还没加入自己的模块”不等于模型没有经过优化。
+
+## 3. 数据集与固定使用规则
+
+来源：[WaterMask 官方仓库](https://github.com/LiamLian0727/WaterMask)提供的[原版 UIIS](https://huggingface.co/datasets/LiamLian0727/UIIS)，不是 UIIS10K。固定版本 `44ca5db46599f14faf8e57643014664435823738`；清单 `data/UIIS/download-manifest.json`。
+
+| 项目 | 数量及规则 |
 | --- | --- |
-| 本地项目、Git、VS Code 共用目录 | 已完成 |
-| SSH 密钥登录、代码同步 | 已实际验证成功 |
-| 实验依赖安装 | 已完成：PyTorch 2.1.2+cu121、MMCV 2.1.0、MMEngine 0.10.7、MMDetection 3.3.0 |
-| 依赖与 GPU 算子验证 | 导入、可变形注意力前向/反向、NMS 均通过；pip check 无冲突 |
-| 官方 COCO 权重下载 | 已完成，SHA256 前缀 41b088b6 校验通过 |
-| Mask2Former ResNet-50 单图推理 | 已完成，输出 MASK2FORMER_DEMO_OK；阈值 0.5 下有 20 个实例 |
-| UIIS 数据集 | 本地与服务器 4631 个文件均通过官方哈希校验；图片与全部掩码审计通过，发现 1 对跨划分重复图片 |
-| UIIS 七类短训练配置 | 已通过：训练 50 → 保存 → 恢复到 100 → 全量 bbox/segm 评估 |
-| 正式 36 轮训练与最终评估 | 已完成：70884 次迭代；691/691 张；segm AP 32.6，AP50 47.6，AP75 35.3 |
-| WaterMask 模块适配 | 未开始 |
+| 训练集 | 3937 张、24626 个实例；annotations/train.json |
+| 测试集 | 691 张、3784 个实例；annotations/val.json，文件名 val 但官方用途是测试 |
+| 文件核验 | 本地及服务器 4631 个清单文件哈希通过；不是 4631 张图片 |
+| 结构审计 | 全部图片读取、尺寸和掩码解码通过，结构错误 0、空掩码 0 |
+| 已知重复 | train/XL_266.jpg 与 val/XL_679.jpg 字节完全相同；未排查近重复 |
+| 用户确认规则 | 保留官方划分和这对图片，不删除、不排除；所有对照使用同样规则 |
+| 内部验证集 | 未另划；早期去重及约 10% 内部验证方案仅被记录，未执行，已取消 |
+| 本次模型选择 | 固定最后第 36 轮权重，训练期间不评估测试集、不根据测试 AP 选 best |
 
-此前单图演示使用 COCO 预训练模型与普通场景示例图，仅验证推理链路；水下短训练结果见下文，不代表正式精度。示例图片因服务器访问 GitHub 超时，经本机下载后上传服务器。
+重复图片 SHA256：`ce7d3d5b5c759496d903626329a7ce9ea3cde946853596a3c9fa200c28802af8`。保留是遵循已确认的数据协议，不代表已消除泄漏风险或证明精度提升；论文需披露。
 
-结果在本地和服务器项目目录下的 `reports/demo-mask2former/`：`input.jpg` 为原图，`prediction.jpg` 为分割可视化，`summary.json` 为运行记录。首轮推理约 2.78 秒、峰值已分配 GPU 显存约 1197 MiB，不作为吞吐量或训练显存结论。
+| ID | 类别 | 训练实例 | 测试实例 | 本次分割 AP |
+| --- | --- | ---: | ---: | ---: |
+| 1 | fish | 14709 | 2040 | 48.2 |
+| 2 | reefs | 7251 | 1241 | 33.9 |
+| 3 | aquatic plants | 1052 | 203 | 12.9 |
+| 4 | wrecks/ruins | 211 | 37 | 21.4 |
+| 5 | human divers | 499 | 97 | 64.6 |
+| 6 | robots | 73 | 17 | 26.6 |
+| 7 | sea-floor | 831 | 149 | 20.8 |
 
-### 当前阻碍与同步状态
+类别明显不均衡，需保留分类别指标。下载曾遇大 JSON 不完整、镜像限流；补传后与官方哈希匹配，服务器从本地补传 1629 个缺失文件后完成全量复核。脚本支持 `--audit-only`，默认并发 8，429 等待重试。证据：[uiis-audit.json](reports/uiis-audit.json)。`reports/uiis-ground-truth-train.jpg` 和 `reports/uiis-ground-truth-val.jpg` 是人工标注示例，不是预测。
 
-- 2026-10-12 晚间最新重试已恢复：再次通过定向网络及私钥读取授权后，实际返回 SSH_KEY_OK、PROJECT_DIR_OK；V100 32768 MiB，显存占用 0 MiB。未启用完全访问权限、未修改密钥 ACL；此前文件访问失败已不再复现，但权限恢复的底层原因未确认。该记录为训练启动前的历史检查。本次仅核对登录、GPU 和项目目录，不代表重新全量校验了数据。
+## 4. 正式模型、预训练与训练参数
 
-- 服务器 SSH 已恢复；UIIS 短训练已完成，代码、README 与报告同步到本地及服务器，权重保留在服务器。
-- GitHub 连接超时已通过项目级代理 `http://127.0.0.1:7890` 修复，fetch 已验证成功。该配置仅保存在本机仓库配置中，依赖本机代理运行。
-- Codex 执行环境读取 Windows GitHub 凭据时仍被拒绝访问，自动推送问题未解决。最近一次推送失败，不能把本地提交视为已经上传 GitHub。
-- 本次核对开始时，本地分支与已知 origin/master 一致（此前提交已同步）；但本次 Codex 自动推送仍报凭据调用 NtCreateDirectoryObject 0xC0000022，新文档提交不能记为已推送。最新同步状态以 `git status -sb` 和实际推送结果为准。
-- 数据审计发现 train/XL_266.jpg 与 val/XL_679.jpg 内容完全相同。原始划分未修改；按用户最新要求保留两张图片及原始标注，不删除、不从清单中排除。
+完整结构为 MMDetection Mask2Former，ResNet-50 是骨干。未加入自定义模块，但已修改类别和训练设置，不能说所有参数都没变。
 
-### 历史巡检（2026-10-13 08:07）
+| 参数 | 实际配置 |
+| --- | --- |
+| 基础配置 | mask2former_r50_8xb2-lsj-50e_coco.py；名称指原官方配置，不表示本次用 8 卡或训练 50 轮 |
+| 初始化 | COCO 实例分割整模型预训练；80 类分类层改为 7 类并重新初始化，兼容参数加载 |
+| 输出类别 | 7 个 thing 类，0 个 stuff 类 |
+| 硬件/精度 | 单卡 V100 32GB，FP32 |
+| 数据加载 | batch 2、workers 2；每轮 1969 步，最后一批 1 张，不丢弃 |
+| 训练处理 | 官方 LSJ 随机缩放比例 0.1–2.0、1024×1024 裁剪等流程 |
+| 测试处理 | 保持比例，尺度 (1333, 800) |
+| 优化器 | AdamW，基础学习率 0.0001，骨干倍率 0.1，关闭自动学习率缩放 |
+| 预算/调度 | 36 轮、70884 步；第 27/33 轮学习率各乘 0.1 |
+| 随机种子 | 20261012；目前只做一个种子，未做多次重复 |
+| 权重保存 | 每轮保存，根目录保留最近 3 份；另在 milestones 保存 12/24/36 轮 |
+| 测试与选模 | 不在训练期间测试，不选 best；最后固定 epoch_36 评估 |
 
-训练仍在 RUNNING resume，第 22/36 轮 1500/1969 步，总进度约 60.4%，日志预计剩余 5 小时 34 分钟。GPU 利用率 64%，显存占用 21348 MiB，数据盘可用约 43G。已保存 epoch_19/20/21.pth 和独立 epoch_12.pth 备份。日志近期持续推进；未见 Traceback、显存不足或训练数值异常（检索匹配到的编译参数 Wno-error 不是运行错误）。当前没有发现训练阻塞，不重启、不修改正在运行的配置。预计约当天 13:40 完成，仅为估计，尚未计算 AP。
+配置入口：[prepare-uiis-baseline.py](scripts/prepare-uiis-baseline.py)。完整解析配置：[evaluation-config.py](reports/uiis-baseline-36e-evaluation/evaluation-config.py)。服务器正式目录另有 `config-first.py`、`config-resume.py`、`run-protocol.json`。
 
-### 完成检查（2026-10-13 14:09）
+初始权重：`mask2former_r50_8xb2-lsj-50e_coco_20220506_191028-41b088b6.pth`；SHA256 `41b088b62838c986004f94bab2870395b669ec6bd11b6590369b838b0de06879`。正式训练从该权重开始，没有接续 100 步排错模型或 20 步性能检查权重。
 
-- 训练于 13:41:41 正常结束，退出码 0；result-resume.json 确认完成 36 轮、70884 次迭代，断点恢复状态验证通过。
-- 最终 epoch_36.pth 已实际加载验证：模型参数均为有限值，优化器及调度器状态存在；12/24/36 轮独立备份存在。
-- 最终权重大小 575721052 字节，SHA256：53f9382f8db706be2d91da38b765b6bd5b8f26c33a2434f9a26e795fbbb8376f。
-- 完成检查报告 reports/training-completion-review.json、result-resume.json 和训练日志 training-console.log 已取回本地 reports/。权重仍保留在服务器 work_dirs/uiis_baseline_r50_36e/。
-- 尚未计算正式测试集 AP，不用训练 loss 代替准确率，也不能据此判断优于 WaterMask。保持服务器开机；不重复启动训练。
-- 本次文档将在本地提交并同步服务器；GitHub 自动推送仍需以实际命令结果为准，此前凭据管理器问题未解决。
+## 5. 分阶段实验与验收证据
 
-### 正式评估结果（2026-10-13 14:17）
+| 阶段 | 执行和结果 | 证据 |
+| --- | --- | --- |
+| 环境 | 导入、CUDA 可变形注意力前向/反向、NMS、pip check 通过 | [环境检查](reports/environment-check.txt)、[依赖快照](reports/environment-freeze.txt) |
+| 单图演示 | COCO 普通场景；显示阈值 0.5 时 20 个实例；约 2.78 秒、峰值已分配约 1197 MiB，仅验证推理 | [summary](reports/demo-mask2former/summary.json)、同目录 input.jpg / prediction.jpg |
+| 短训练 | 512 尺度、batch 1、FP32、AdamW 0.0001、无调度；50 步保存后新进程恢复到 100 步，全部 691 张评估 | [50 步](reports/uiis-smoke-50.json)、[100 步](reports/uiis-smoke-100.json)、[权重检查](reports/uiis-smoke-checkpoints.json) |
+| 短训练指标 | mask AP 4.7 / AP50 8.5；bbox AP 4.6；仅测试流程，不是正式基线 | [短训练日志](reports/uiis-smoke-console.log) |
+| 容量检查 | 20 步、1024 LSJ、batch 2；损失有限，无 OOM；峰值已分配 10558.5 MiB，预留 11230 MiB；预热后纯计算 0.694 秒/步 | [性能报告](reports/uiis-baseline-profile.json) |
+| 正式入口隔离验证 | 4 张图、5 小轮；首轮停止/恢复、优化器/调度状态、衰减、最近 3 份及阶段备份、防重复/覆盖均通过 | [入口验证](reports/training-entry-verification.json) |
+| 正式前检查 | 4631 文件、预训练哈希、15 源文件同步、GPU 算子、加载器/类别映射、配置、锁/进程/磁盘通过 | [preflight](reports/formal-training-preflight.json)、[源码清单](reports/preflight-code-manifest.json) |
+| 首轮 | 1969 步，exit=0，权重可读，模型/优化器有限、调度存在；约 24 分钟 | [首轮核验](reports/first-epoch-review.json) |
+| 36 轮完成 | 70884 步，exit=0；恢复状态一致，最终模型有限、优化器/调度存在，12/24/36 备份存在 | [续训结果](reports/result-resume.json)、[完成核验](reports/training-completion-review.json) |
+| 全量评估 | 完整覆盖 691 个图像 ID，退出 0，权重哈希与完成检查一致 | [指标](reports/uiis-baseline-36e-evaluation/metrics.json)、[退出码](reports/uiis-baseline-36e-evaluation/exit-code.txt) |
 
-使用保存的 config-resume.py 和最终 epoch_36.pth，仅切换权重与评估输出位置，保留原测试流程；不重新训练、不按测试集挑选 checkpoint。官方 691 张测试图全部覆盖，图片 ID 集合核对通过，退出码 0。权重哈希与完成检查一致。
+短测试不证明已收敛，也不代表全数据显存上限。首轮第 50 步日志 loss 43.4699、第 1950 步 25.92，不能代替测试精度。完成检查文件中的 `accuracy_evaluated=false` 是当时尚未评估的历史状态，后来评估以独立 metrics.json 为准。
+
+正式时间（北京时间）：2026-10-12 23:30:33 启动，23:54:30 首轮结束；23:57:55 用户确认后恢复，2026-10-13 13:41:41 正常结束。含人工暂停总历时约 14 小时 11 分钟。评估于 14:17 完成，记录测试耗时约 179.38 秒，不含全部启动和结果整理开销。
+
+正式服务器目录：`/root/autodl-tmp/underwater-segmentation/work_dirs/uiis_baseline_r50_36e`。最终 `epoch_36.pth` 为 575721052 字节，SHA256 `53f9382f8db706be2d91da38b765b6bd5b8f26c33a2434f9a26e795fbbb8376f`。
+
+历史首轮哈希：`2662f3b7584c642e8fc1809254d099ad559c33797733ffb1fdcc91f81b82b733`。滚动保存会清理早期权重，不能根据历史核验报告声称 epoch_1 目前仍存在。
+
+## 6. 正式结果与实际问题
 
 | 任务（0–100 分） | AP | AP50 | AP75 | 小目标 AP | 中目标 AP | 大目标 AP |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
-| 实例分割 segm | 32.6 | 47.6 | 35.3 | 8.2 | 25.1 | 47.8 |
+| 实例分割 segm（主要指标） | 32.6 | 47.6 | 35.3 | 8.2 | 25.1 | 47.8 |
 | 检测框 bbox | 34.3 | 47.6 | 35.3 | 9.3 | 29.8 | 47.4 |
 
-分类别分割 AP：fish 48.2、reefs 33.9、aquatic plants 12.9、wrecks/ruins 21.4、human divers 64.6、robots 26.6、sea-floor 20.8。AP 不是像素正确率；小目标 AP 较低不等于已证明问题来自边界模块。
+[结果目录](reports/uiis-baseline-36e-evaluation/)包含 report.md、metrics.json、predictions.bbox.json / predictions.segm.json、evaluation-config.py、console.log、exit-code.txt、examples/0.jpg 至 5.jpg。
 
-- 报告与固定前 6 张人工标注/预测对照图：reports/uiis-baseline-36e-evaluation/report.md。
-- 完整指标 metrics.json、原始预测 predictions.bbox.json / predictions.segm.json、配置 evaluation-config.py、日志 console.log 和退出码在同一目录，已取回本地；原始权重仍在服务器。
-- 可视化置信度阈值 0.5 仅用于画图，不改变 AP 评估。原始划分及已知重复图片保持不变，后续对照沿用同样规则。
-- 新增 scripts/evaluate-uiis.py、evaluation-worker.sh、report-uiis-evaluation.py：全量评估、后台执行及报告生成。已通过服务器语法检查和实际全量运行；评估入口拒绝覆盖已完成的指标文件。
-- 本地代码、README 和 AGENTS 将提交并同步服务器；GitHub 自动推送仍受此前凭据管理器问题影响，以本次实际推送输出为准。
+这是一组单次可追溯基线成绩，不意味着视觉效果令人满意、预算最优或全部类别都表现好。训练充分性、多种子稳定性、边界专用指标和跨数据集泛化尚未验证。
 
-### 下一步从这里开始
+### 六张示例复核
 
-1. 阅读正式评估报告，分析错误案例，明确第一个模块适配要解决的具体问题；尚未做边界专用指标分析。
-2. 核对 WaterMask 的训练预算、预训练和评估设置，再进行有条件的论文数值比较，不能直接宣称公平胜出。
-3. 在固定基线和数据规则下逐个验证模块适配，保持对照条件一致。
+预测计数限显示阈值 score >= 0.5，不改 AP 评价。
 
-无需重新训练或重复评估已完成的基线。服务器保持开机，未启动新训练。
-
-需要重跑单图验证时，在本机项目目录执行 `powershell -ExecutionPolicy Bypass -File .\run-demo.ps1`。权重与图片存在时会复用；GitHub 图片下载超时时需处理网络或提供同一示例图，不能把下载失败误判为模型失败。
-
-每完成或尝试一个工作步骤，都更新本节的结果、阻碍和下一步，相关文档与代码一同提交。
-
-## 项目位置与文件用途
-
-- 本地目录：`C:\Users\Lenovo\Documents\Codex\2026-10-09\new-chat-2\underwater-segmentation`。
-- 服务器目录：`/root/autodl-tmp/underwater-segmentation`。
-- GitHub 仓库：<https://github.com/XilunWang/Master-thesis>，当前分支 `master`。
-- 本地是代码主目录，VS Code 和 Codex 使用同一份文件；运行前再同步到服务器。
-
-| 文件或目录 | 用途 |
-| --- | --- |
-| `AGENTS.md` | 协作、步骤记录、提交与推送约定 |
-| `requirements.txt` | 主要依赖的固定版本 |
-| `scripts/install-env.sh` | 创建项目环境并安装、验证依赖 |
-| `scripts/verify-env.py` | 验证依赖与关键 GPU 算子 |
-| `scripts/demo-mask2former.py` | 加载官方权重并完成单图推理 |
-| `scripts/download-uiis.py` | 固定数据版本下载，支持跳过已校验文件，验证官方文件哈希 |
-| `scripts/validate-uiis.py` | 检查图片、标注引用、类别、掩码解码及跨划分完全重复图片 |
-| `scripts/train-uiis-smoke.py` | 构建七类、单卡、512 像素的排错配置并运行短训练/评估 |
-| `scripts/run-uiis-smoke.sh` | 先训练 50 次，再恢复到 100 次；每次创建新的输出目录 |
-| `run-demo.ps1` | 本地一键同步、远程推理、下载结果 |
-| `connect.ps1` / `ssh.config` | 连接训练服务器 |
-| `setup-ssh.ps1` | 初次登记 SSH 公钥，已完成，无需重复执行 |
-| `sync-code.ps1` | 按 Git 忽略规则同步源代码 |
-| `reports/` | 检查报告、结果图、依赖快照，不提交 Git |
-| `checkpoints/` | 已下载的模型权重，目前主要在服务器，不提交 Git |
-| `.local/` | 本机密钥和同步临时文件，不提交 Git、不上传服务器 |
-
-## 已完成的推理是什么
-
-模型为 MMDetection 的 `mask2former_r50_8xb2-lsj-50e_coco`：ResNet-50 提取图像特征，Mask2Former 预测每个物体的类别和掩码。当前没有加入 DSGAT、MFRM 或 BLL。
-
-- `input.jpg`：输入的普通场景原图。
-- `prediction.jpg`：模型输出叠加图；彩色区域为实例掩码，白色线条是轮廓，矩形是检测框，文字是类别及置信度。
-- 置信度不是分割准确率。没有用人工真值标注计算 AP，也没有验证水下边界改进。
-- 一张图只用于检查“加载模型—GPU 推理—保存结果”的链路，不能代替完整数据集实验。
-
-## UIIS 数据准备
-
-来源为 [WaterMask 官方仓库](https://github.com/LiamLian0727/WaterMask) 链接的 [原版 UIIS](https://huggingface.co/datasets/LiamLian0727/UIIS)，不是 UIIS10K。固定版本为 `44ca5db46599f14faf8e57643014664435823738`，下载清单保存在 `data/UIIS/download-manifest.json`。
-
-官方说明为 3937 张训练图、691 张测试图；测试标注文件名为 `val.json`。按用户要求保留官方原始划分；目前不另划内部验证集。最终评价和模型选择规则后续确定。
-
-已读取原始 JSON，训练集有 24626 个实例，测试集有 3784 个实例。类别编号如下，后续配置必须按标注名称和顺序映射：
-
-| ID | 官方类别名称 | 训练实例数 | 测试实例数 |
+| 图片 | 人工实例 | 显示预测实例 | 观察 |
 | --- | --- | --- | --- |
-| 1 | fish | 14709 | 2040 |
-| 2 | reefs | 7251 | 1241 |
-| 3 | aquatic plants | 1052 | 203 |
-| 4 | wrecks/ruins | 211 | 37 |
-| 5 | human divers | 499 | 97 |
-| 6 | robots | 73 | 17 |
-| 7 | sea-floor | 831 | 149 |
+| L_1000.jpg | fish 2、reefs 4、sea-floor 2 | fish 2、reefs 3 | 鱼主体较接近，海底未显示，礁石范围和划分有偏差 |
+| L_1001.jpg | reefs 1 | reefs 1 | 上方细长部分明显缺失 |
+| L_1025.jpg | reefs 1、fish 4 | reefs 1、aquatic plants 1 | 四条鱼均未达显示阈值，最高鱼分数 0.410；不是完全没有鱼候选 |
+| L_1029.jpg | reefs 1 | fish 1、reefs 1 | 同一目标附近出现不同类别，需进一步掩码匹配；不擅自改标注 |
+| L_1032.jpg | fish 1 | fish 1 | 主体轮廓较接近，相对较好 |
+| L_1046.jpg | reefs 5 | reefs 15、aquatic plants 1 | 数量明显失配，需量化多报、拆分、重叠，不能只归因于边缘 |
 
-类别数量明显不均衡，尤其 robots 实例少。后续除整体 mask AP 外，应保留各类别结果，不能只看平均指标。
+绘图按类别着色，没有实例编号、类别文字或分数；重叠透明掩码会改变颜色，不易分辨同类实例。展示问题存在，但不能掩盖真实预测错误。改版可视化和全测试集错误占比统计尚未执行。
 
-下载程序使用 Python 和 requests（本机已有）。图片与 COCO JSON 位于 `data/UIIS/{train,val,annotations}`，不提交 Git。文件校验使用官方 Git blob SHA1 或 LFS SHA256。完整下载后将数据单独传到服务器；普通代码同步脚本不会传输 `data/`。
+## 7. 术语与论文比较规则
 
-原站两份大 JSON 曾下载不完整，已通过补传恢复并匹配官方 SHA256。本地 4631 个文件已全量复核通过。服务器使用同一官方清单与 `--mirror` 从 `hf-mirror.com` 传输部分文件；镜像限流后停止下载，从本地补传 1629 个缺失文件。服务器最终 4631 个文件全量哈希复核通过。后续可用 `--audit-only` 离线复核，默认并发已降为 8，遇到 429 会等待。
+**COCO** 有两个用途：模型先在 COCO 上学习通用分割；本次 UIIS 测试使用 COCO 评分规则。`coco/segm_mAP` 指评价器，不表示用普通场景替代水下图片考试。
 
-服务器已执行 `.venv/bin/python scripts/validate-uiis.py`，结果保存在本地与服务器的 `reports/uiis-audit.json`。3937+691 张图片读取及尺寸检查通过，24626+3784 个掩码解码通过，结构错误 0、空掩码 0。发现 1 对跨划分完全重复图片（仅检查字节一致，未排查近重复）：训练 XL_266.jpg 与测试 XL_679.jpg。未自动删除、改写原始数据。
+- **IoU**：预测区域与人工区域的交集面积 / 并集面积。
+- **AP50 / AP75**：用 IoU >= 0.50 / 0.75 匹配类别正确的实例，再综合预测排序、误报和漏检计算精度。
+- **主 AP**：在 0.50、0.55……0.95 十个阈值及类别上平均，不是像素正确率或单张图的重合率。
+- JSON 的 0.326 写成 32.6 AP；差值 6.2 是 AP 点数，不是相对提升 6.2%。
+- 图上置信度阈值 0.5 与 AP50 的 IoU 0.5 不同；AP75 更严格，但不等于边界专用指标。
 
-`reports/uiis-ground-truth-train.jpg` 与 `reports/uiis-ground-truth-val.jpg` 各展示一张原图（左）及人工标注叠加（右），不是模型预测。本地已查看训练样例，全面标注质量仍不能仅凭抽样保证。
+定义来源：[COCO 评估实现](https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py)。
 
-## 正式实验数据使用方案（按用户最新要求修订）
+### WaterMask 初步比较
 
-2026-10-12 用户明确要求：保留官方原始划分；所有对照模型使用同样的数据规则；最终评价方式最后再定；不删除已发现的重复图片。本节取代此前去重并划出约 10% 内部验证集的方案，该旧方案未执行。
+| 方法 | mask AP | AP50 | AP75 | 来源 |
+| --- | ---: | ---: | ---: | --- |
+| WaterMask R50-FPN，3× | 26.4 | 43.6 | 28.8 | 官方公布，未自行复现 |
+| WaterMask R101-FPN，3× | 27.2 | 43.7 | 29.3 | 官方公布，未自行复现 |
+| 本次 Mask2Former R50，36 轮 | 32.6 | 47.6 | 35.3 | 实测 |
+| 本次减 WaterMask R50 | +6.2 | +4.0 | +6.5 | AP 点数差值 |
+| 本次减 WaterMask R101 | +5.4 | +3.9 | +6.0 | AP 点数差值 |
 
-- 官方训练集：3937 张，继续使用原始 `annotations/train.json`。
-- 官方测试集：691 张，继续使用原始 `annotations/val.json`（文件名虽为 val，官方用途为测试集）。
-- 保留 `train/XL_266.jpg` 和 `val/XL_679.jpg`，不删除图片，不从训练或测试标注中排除。两者 SHA256 均为 `ce7d3d5b5c759496d903626329a7ce9ea3cde946853596a3c9fa200c28802af8`。
-- Mask2Former 基线、改进模型及计划复现的 WaterMask 共用相同数据规则。目前不生成派生划分，不另留内部验证集。
-- 最终评价方式及模型选择规则待定；不预先安排排除重复测试图片的额外评估，也不使用测试成绩自动挑选模型。
-- 保留已知跨划分重复的审计记录，在后续结果说明中如实披露。只确认了文件内容完全相同的重复，未排查近重复；保留它是为了遵循官方划分，不代表已经获得精度提升或消除了泄漏风险。
+来源：[官方结果表](https://github.com/LiamLian0727/WaterMask#main-results)。2026-10-13 已核对原 mmdet2 分支 [R50 3× 配置](https://raw.githubusercontent.com/LiamLian0727/WaterMask/mmdet2/configs/_our_/water_r50_fpn_ms3x.py)：36 轮、27/33 衰减、SGD lr=0.0025、短边 480–800 多尺度缩放；[1× 基础配置](https://raw.githubusercontent.com/LiamLian0727/WaterMask/mmdet2/configs/_our_/water_r50_fpn_1x.py)继承 Mask R-CNN 并换为 WaterRoIHead / WaterMaskHead。当时 README 当前分支的 3× 配置链接失效，因此读取原分支。
 
-本步骤仅修改文档约定，没有修改图片、原始 JSON 或训练代码，没有启动训练。后续候选配置已按本协议准备，见下一节。
-## 短训练流程测试（已通过）
+本次使用 AdamW、1024 LSJ 和 COCO 整模型预训练。对方实际预训练加载及运行覆盖参数仍未完整核对，不能默认相同，也不能声称对方没有 COCO 预训练。同骨干、同轮数不等于全部条件相同；+6.2 AP 不能归因于尚未实现的自有模块。
 
-已通过服务器 `screen` 会话 `uiis-smoke` 完成，进程正常结束。日志为 `reports/uiis-smoke-console.log`，本次权重目录由 `reports/uiis-smoke-latest.txt` 记录。使用官方 3937/691 划分，没有去重或重新划分。
+### 论文中可以怎样比较
 
-设置：Mask2Former ResNet-50、7 个实例类别、输入缩放到 512×512 范围并保持比例、batch size 1、FP32、AdamW 基础学习率 0.0001、随机种子 20261012，无学习率调度。这些只用于测试流程，不是最终基线训练参数。
+可以引用官方结果作外部参考，但注明来源、是否复现、训练差异。不同完整方法可使用各自训练策略；数据划分、任务和评分规则应统一，额外预训练数据需披露。当前不是完全控制训练条件的对照实验。
 
-COCO 权重的分类层有 80 类，而 UIIS 有 7 类，因此分类层权重和偏置尺寸不匹配并重新初始化是预期现象；其余兼容权重正常加载。`reports/uiis-smoke-config-*.py` 保存实际解析后的配置。
+| 比较 | 回答的问题 | 条件要求 |
+| --- | --- | --- |
+| 最终方法 vs WaterMask 等 | 与已有方法相比性能如何 | 标明官方/复现结果和训练差异，条件允许时同环境复现 |
+| 原版 Mask2Former vs 改进版 | 自己的设计是否有效 | 尽量固定数据、预训练、预算、优化器、增强、评价器和种子，仅改变模块 |
+| 逐模块消融 | 每一部分有何贡献 | 分别和组合测试，保留失败/无增益记录，不只报最好组合 |
 
-实际验收通过：
+当前 32.6 属于原版基线，不是自己的创新成果。WaterMask 内部模块有效不代表移植必然有效。未来调参和选模规则仍需明确；不能反复依据测试集选配置后声称测试完全独立。
 
-- 50 次保存后重新启动进程，日志确认 `resumed epoch: 0, iter: 50`，继续到 100 次。
-- `iter_50.pth` 和 `iter_100.pth` 均存在，迭代元数据正确，均包含 345 项优化器状态；权重各约 528 MB，保留在服务器。
-- 10 条训练日志记录无 NaN/Inf，阶段报告的末步损失均为有限值。此检查不等于证明已经收敛。
-- 全部 691 张图完成 bbox 与 segm 评估，最终输出 `UIIS_SMOKE_ALL_OK`。
-- 流程测试 mask AP = 0.047（4.7 AP）、AP50 = 0.085（8.5 AP），bbox AP = 0.046。仅训练 100 次、保留已知重复图片，不能作为论文正式基线或模块效果结论。
+## 8. 工作目录、硬件与完整源码
 
-本次输出目录：服务器 `work_dirs/uiis_smoke_20261012_150419`。本地及服务器 `reports/` 均保存 `uiis-smoke-50.json`、`uiis-smoke-100.json`、`uiis-smoke-checkpoints.json`、完整控制台日志、实际配置及目录记录。报告中的 `peak_gpu_mib` 是训练框架可能重置过的显存计数器读数，不能解释为整个实验的峰值。
+- 本地：`C:/Users/Lenovo/Documents/Codex/2026-10-09/new-chat-2/underwater-segmentation`，VS Code 与 Codex 共用唯一代码主目录。
+- 服务器：`/root/autodl-tmp/underwater-segmentation`。
+- GitHub：[XilunWang/Master-thesis](https://github.com/XilunWang/Master-thesis)，master 分支。
+- 已用硬件：AutoDL 047 机，V100-PCIE-32GB 单卡、CPU 6 核、内存 25GB、系统盘 30GB、数据盘 50GB。截图 1.88 元/小时为历史价格，不保证后续不变。
+- 环境：Python 3.10、PyTorch 2.1.2+cu121、torchvision 0.16.2+cu121、NumPy 1.26.4、MMCV 2.1.0、MMEngine 0.10.7、MMDetection 3.3.0。
+- 驱动 535.54.03；nvidia-smi 的 CUDA 12.2 与 PyTorch 的 CUDA 12.1 含义不同。
+- `.venv` 用 `--system-site-packages` 复用基础环境，非完全隔离；更换镜像后需重新验证。[requirements.txt](requirements.txt)固定新增依赖，环境快照在 reports。
 
-重跑入口：同步代码后在服务器项目目录执行 `bash scripts/run-uiis-smoke.sh`；长时间运行应放入 screen 会话。重跑会创建新的权重目录，但覆盖同名 reports 流程报告，需要留存旧报告时先备份。
+本仓库不是 Mask2Former 全部源码。完整实现来自服务器 `.venv/lib/python3.10/site-packages/` 中 mmdet/mmengine 和 PyTorch/MMCV。已核对 `mmdet/models/detectors/mask2former.py`、`mmdet/models/dense_heads/mask2former_head.py`、`mmdet/models/layers/msdeformattn_pixel_decoder.py`、`mmengine/runner/runner.py` 等；入口文件很短不代表网络很小。证据：[源码核查](reports/baseline-readiness-audit.json)。自定义模块应放本地项目并注册，不直接改服务器 site-packages。
 
-## 正式基线候选配置与性能检查（已完成）
+### 脚本索引
 
-入口为 `scripts/prepare-uiis-baseline.py`。不带参数仅生成 `reports/uiis-baseline-candidate.py` 并检查官方数量、类别顺序及重复图片仍在标注中；带 `--profile` 只运行 20 步，不保存训练权重或评估测试集。该脚本仍仅用于配置与性能检查；现已新增正式入口 scripts/run-training.sh，见下文。
+| 文件 | 用途及限制 |
+| --- | --- |
+| [AGENTS.md](AGENTS.md) | 协作、权限、同步和启动规则 |
+| [connect.ps1](connect.ps1)、[ssh.config](ssh.config) | SSH 登录及别名 |
+| [setup-ssh.ps1](setup-ssh.ps1) | 首次安装公钥，已成功，不需每次重做 |
+| [check-server.ps1](check-server.ps1) | 只读检查 SSH/GPU/项目路径/磁盘，不替代算子和全量数据验证 |
+| [sync-code.ps1](sync-code.ps1) | 按 Git 忽略规则上传代码，非实时同步、不传忽略目录 |
+| [run-demo.ps1](run-demo.ps1) | 同步、单图推理、回传演示结果 |
+| [install-env.sh](scripts/install-env.sh)、[verify-env.py](scripts/verify-env.py) | 安装依赖及 GPU 算子检查 |
+| [demo-mask2former.py](scripts/demo-mask2former.py) | COCO 单图推理 |
+| [download-uiis.py](scripts/download-uiis.py)、[validate-uiis.py](scripts/validate-uiis.py) | 数据下载校验及结构审计 |
+| [train-uiis-smoke.py](scripts/train-uiis-smoke.py)、[run-uiis-smoke.sh](scripts/run-uiis-smoke.sh) | 50→100 步排错，重跑会覆盖同名 reports 报告 |
+| [prepare-uiis-baseline.py](scripts/prepare-uiis-baseline.py) | 生成配置；--profile 执行 20 步，不是正式入口 |
+| [train-uiis.py](scripts/train-uiis.py) | first/resume、状态检查、锁和阶段备份 |
+| [run-training.sh](scripts/run-training.sh)、[training-worker.sh](scripts/training-worker.sh) | screen 后台及状态/退出码 |
+| [test-training-entry.py](scripts/test-training-entry.py) | 4 图/5 小轮管理逻辑验证 |
+| [continue-overnight.py](scripts/continue-overnight.py)、[run-overnight.sh](scripts/run-overnight.sh) | 历史自动接续，已取消，不重启 |
+| [evaluate-uiis.py](scripts/evaluate-uiis.py)、[evaluation-worker.sh](scripts/evaluation-worker.sh) | 固定最终权重全量评估；metrics 已存在则拒绝覆盖 |
+| [report-uiis-evaluation.py](scripts/report-uiis-evaluation.py) | 从指标和预测绘图、生成报告，服务器环境实测通过 |
 
-候选设置：原版 Mask2Former ResNet-50，COCO 预训练、UIIS 七类分类层重新初始化；保留 MMDetection 官方 1024×1024 LSJ 随机缩放/裁剪训练流程，测试缩放为 (1333, 800)。单卡 batch 2、2 个数据加载进程、FP32，AdamW 基础学习率 0.0001（主干倍率 0.1），禁用自动学习率缩放。原始 3937/691 数据及已知重复图片保留。
+## 9. 保存位置、Git 与关机
 
-当前正式入口配置为总计 36 轮，第 27、33 轮降低学习率，每轮保存最近 3 份，另行备份第 12/24/36 轮；尚未启动正式训练，也不代表已经证明足够收敛。由于最终评价与模型选择规则待定，候选配置禁用训练期间测试集评估及 best-checkpoint 自动选择。保存策略已通过下文小规模测试；最终评价方式仍待定。
+| 内容 | 本地 | 服务器 | GitHub |
+| --- | --- | --- | --- |
+| 代码 | 主工作副本 | 评估阶段代码已上传 | 提交/推送管理 |
+| README / AGENTS | 本轮全面整理 | 本轮未连接，待重连同步最新文档 | 本轮提交及推送结果另记 |
+| UIIS 图片/标注 | 已下载核验 | 已上传核验 | 忽略，不上传 |
+| 指标/日志/原始预测/示例图 | 已下载 reports | 已保存 | 忽略，不随 push 备份 |
+| 正式权重/阶段备份 | 尚未下载备份 | 完成核验时存在 | 忽略，不上传 |
 
-2026-10-12 性能检查通过 `BASELINE_CONFIG_OK` 和 `BASELINE_PROFILE_OK`：
+普通关机与释放/重置不同。平台先前截图提示关机 15 天后释放，长期停用前需核实保留期限并备份权重；不能把 GitHub 代码同步当成模型和报告备份。脚本不自动关机，本轮未代操作开关机或确认电源状态。
 
-- 20 步、每步 2 张，所有步骤的损失检查均为有限数；无显存溢出。
-- GPU 为现有 V100 32 GB；逐步统计峰值已分配显存 10558.5 MiB（约 10.31 GiB），峰值缓存预留 11230 MiB（约 10.97 GiB）。仅代表这 40 张次样本，不能保证后续所有样本的峰值。
-- 去掉前 5 步后，平均纯计算时间约 0.694 秒/步，不包含数据加载。训练调用总耗时 20.41 秒，包含初始化开销，不能直接当稳定每步耗时。
-- 每轮约 1969 步；若采用 36 轮，共 70884 步。由本次短测外推，纯计算约 13.7 小时；考虑数据加载、保存、样本差异，暂按约 15–22 小时作粗略排期，不是完成时间承诺，也不包含最终评估。完整训练速度仍需较长运行确认。
+本轮开始时 `master` 与本地已知 `origin/master` 同为 `a957686`，但未在线 fetch，不能把远程跟踪引用当成实时服务端状态。此前 Codex 自动 push 多次因凭据管理器 `NtCreateDirectoryObject 0xC0000022` 失败，不能据此断言用户没有通过其他方式同步。项目代理 `http://127.0.0.1:7890` 曾解决 GitHub 连接超时；凭据调用失败是另一问题。本轮新文档已本地提交；实际 git push origin master 再次因凭据管理器 0xC0000022 失败，未完成自动推送。不强推覆盖远程。
 
-报告和实际配置已取回本地，与服务器均位于 `reports/uiis-baseline-*`；`uiis-baseline-profile.json` 含每步时间、显存及损失，`.log` 为完整日志。此次只检查训练容量，不产生新的 AP 成绩。正式训练仍应从 COCO 预训练权重开始，不接续性能检查或此前 100 步权重。
-## 正式训练入口（已实现并通过隔离测试）
+## 10. 重连与执行入口
 
-执行位置为服务器 `/root/autodl-tmp/underwater-segmentation`，本地改动先用 sync-code.ps1 同步。以下命令只有用户要求启动对应阶段时才执行，本次仅执行 verify：
-
-```bash
-# 首次正式启动：总计划保持 36 轮，完成第 1 轮保存后自动暂停
-bash scripts/run-training.sh first
-# 检查首轮通过后继续：自动读取该正式目录的 last_checkpoint
-bash scripts/run-training.sh resume
-# 查看后台会话、退出码与最新日志
-bash scripts/run-training.sh status
-```
-
-正式目录固定为 `work_dirs/uiis_baseline_r50_36e`。first 拒绝覆盖已有目录；resume 核对原始训练标注哈希、完整候选配置和运行类型，拒绝混用性能测试与正式权重。恢复前逐项核对 checkpoint 记录的轮次、步数、优化器张量和学习率调度状态。恢复验证不等于保证跨进程的随机数据增强与不中断训练逐位相同。
-
-采用 36 轮总计划、第 27/33 轮衰减，不先设置为 1 轮再随意改变调度。首轮停止钩子在调度和 checkpoint 保存之后执行。每轮保存模型/优化器/调度器及进度，根目录保留最近 3 个 checkpoint；第 12/24/36 轮独立复制到 milestones 子目录。没有自动评估测试集、挑最高分权重或自动关机。
-
-后台由 screen 会话 uiis-training 托管；SSH 启动命令返回后仍继续运行。会话检查与项目 flock 锁用于拒绝重复启动；锁在进程结束时自动释放。该锁约束新正式入口，不能替代检查其他手工启动的旧测试或外部 GPU 任务。日志追加到 reports/training-console.log，退出状态写入 reports/training-exit-code.txt。BACKGROUND_REQUESTED 只表示发出了启动请求，需继续检查日志；只有结束标记和退出码才表示阶段成功。异常时停止，不自动重新启动或关闭服务器。
-
-本次实测（2026-10-12 23:22–23:24）：通过 `bash scripts/run-training.sh verify` 在后台使用原版模型、1024 LSJ、batch 2、4 张图片进行 5 个小轮次，每轮 2 步。它是独立管理逻辑测试，不是 UIIS 正式训练轮次。
-
-- 首个进程完成 1 小轮/2 步后保存退出；新进程恢复到 5 小轮/10 步。
-- 恢复时模型由 Runner 加载；额外核对轮数、步数、所有优化器状态张量及调度器状态一致，输出 RESUME_STATE_VERIFIED。
-- 测试第 2/4 小轮的学习率衰减生效，最终基础学习率 0.000001。
-- 最终根目录仅保留 epoch_3/4/5.pth；独立备份 epoch_1/3/5.pth 均保留。这验证的是共用保留逻辑，正式第 12/24/36 轮尚未运行。
-- 持锁时第二个训练进程被拒绝；后台 screen 存在时再次启动也被拒绝；first 覆盖已有目录被拒绝。
-- 所有训练步损失有限；最终 TRAINING_ENTRY_VERIFICATION_OK、EXIT_CODE=0 action=verify，screen 正常退出。
-
-结果在本地/服务器 `reports/training-entry-verification.json` 和 `reports/training-console.log`；测试权重保留在报告列出的 entry_verification 独立目录。尚未实测的项目：3937 张全量正式首轮、长训练中断后现场恢复、36 轮完整耗时及最终 AP。不能把小测试通过写成正式训练完成。
-## 正式启动前复核（2026-10-12 23:29，通过）
-
-本轮仅检查，未启动正式训练。报告在本地和服务器 `reports/formal-training-preflight.json`，本地源文件哈希清单在 `reports/preflight-code-manifest.json`。
-
-- 原始数据清单 4631 个文件重新全量哈希验证，缺失/不匹配 0；沿用此前已通过的图片/掩码结构审计。原始 3937/691 划分及重复图片保留。
-- COCO 预训练权重 SHA256 完整匹配 `41b088b62838c986004f94bab2870395b669ec6bd11b6590369b838b0de06879`。
-- 环境导入、CUDA 可变形注意力前向/反向、NMS 重新通过；pip check 无依赖冲突。
-- 本地/服务器 15 个运行相关文件 SHA256 一致，Python 语法及后台 shell 语法通过。
-- 重建真实数据加载器，7 类 ID/名称和模型输出数量匹配；3937 张、batch 2、1969 步，最后一批 1 张，不丢弃。36 轮计划、第 27/33 轮学习率衰减、主干倍率 0.1、1024 裁剪、禁用定期测试集评价均符合约定。
-- 前一轮真实模型小测试已通过首轮停止、优化器/调度状态恢复、权重保留、防重复及防覆盖；本次复核报告和加载日志，没有为了重复验证再次训练。仅分类层从 81（含背景）变为 8 的权重不匹配，符合七类重新初始化的预期。
-- 正式训练目录不存在，项目锁空闲，GPU 无计算进程；screen/flock/bash 可用，数据盘约 44.17 GiB 可用（df 显示约 45G），足够目前每份约 0.5GB 的保存方案。
-
-结论：当前已检查的软件与文件条件允许进入正式第一轮，不存在已发现的代码阻塞。仍未验证完整一轮所有实际增强样本、长训练收敛和最终 AP；平台账户余额和定时关机设置当前无法经 SSH 读取，不能标记已核验。正式训练结束后保持服务器开机，脚本不安排自动关机。
-## 正式第一轮启动记录（已完成并暂停，见末尾记录）
-
-2026-10-12 23:30:33（北京时间），用户授权启动后执行 `bash scripts/run-training.sh first`。后台 screen 会话为 `2643.uiis-training`，正式输出目录为 `work_dirs/uiis_baseline_r50_36e`。启动 SSH 返回后，另一次 SSH 检查显示会话 Detached 且仍运行，验证不依赖本地终端保持在线。
-
-23:31:25 日志达到第 1 轮 50/1969 步：平均约 0.7526 秒/步，loss 43.4699，为有限值。此时估计首轮约 25–30 分钟；日志 ETA 14:48:32 是按 36 轮总计划估算，当前 first 会在第 1 轮保存后停止，不会连续跑满 36 轮。短期速度不能当成完成时间保证。
-
-本地电脑、VS Code、SSH 可以关闭，租用服务器必须保持开机且余额充足。首轮结束仅停止训练进程，服务器继续开机并可能继续计费。后续已补上服务器端自动验收与续训（见下文）；没有自动关机或离线消息通知。
-
-下次检查：`bash scripts/run-training.sh status`；核对退出码 0、`UIIS_TRAIN_STAGE_OK first 1`、`result-first.json` 和 `epoch_1.pth` 后自动接续（23:35 新增安排）。原始数据和模型训练配置没有改动。
-## 整夜自动接续（历史配置，23:40 已按用户要求取消）
-
-用户希望去睡觉后继续整夜训练，因此新增 `scripts/continue-overnight.py` 和 `scripts/run-overnight.sh`。不重启、不打断当前首轮。独立 screen 会话 `3054.uiis-overnight`（会话名 uiis-overnight）已确认 Detached，状态为 waiting_for_first_epoch；此时正式训练日志已到 350/1969 步。本机关闭不影响两项服务器任务。
-
-首轮正常退出后，监控要求退出码为 0 且 action=first，原训练 screen 已退出；读取 result-first.json 和 epoch_1.pth，验证正式模式、第 1 轮/1969 步、last_checkpoint 路径一致、优化器/调度状态存在、模型/优化器张量和末步损失均有限。随后调用原有 training-worker.sh resume，在 uiis-overnight 会话内训练至总计 36 轮；原训练入口再次核对配置和恢复状态。首轮不会重跑。
-
-失败时写 blocked 或 resume_failed，不盲目重新训练；等待首轮超过 120 分钟也停止自动接续，需人工检查。监督锁防止重复监控。完成后写 completed，不关闭服务器。该验收判断流程/数值健康，不能判断精度或收敛；不评估测试集、不新增通知服务。
-
-验证：使用先前隔离测试的第 1 轮真实 checkpoint，通过数值/状态检查，并确认错误轮数和混用测试/正式模式会被拒绝，输出 OVERNIGHT_GATE_TEST_OK。实际正式首轮验收和自动接续尚未发生，不能记为已经成功续训。监控用 CPU 加载 checkpoint，不占训练 GPU；续训子进程沿用监控的 OMP/MKL 单线程环境，模型/优化器配置不变，实际速度待观察。
-
-状态文件 `reports/overnight-status.json`；监控日志 `reports/overnight-console.log`；训练日志仍为 `reports/training-console.log`。当前 overnight-status.json 为 cancelled_by_user；不得自动重启监控或续训。下次先共同检查首轮结果。服务器余额和平台定时关机设置仍未核验；训练成功、异常或验收失败后均保持服务器开机，仍可能计费。
-## 服务器依赖环境
-
-在服务器项目目录执行 `bash scripts/install-env.sh` 安装依赖；以后使用 `.venv/bin/python` 运行代码，或先执行 `source .venv/bin/activate`。
-
-环境基于平台镜像的 Python 3.10、PyTorch 2.1.2+cu121、torchvision 0.16.2+cu121。项目 venv 通过 `--system-site-packages` 复用基础环境，因此并非完全隔离；更换或修改基础镜像后需要重新验证。项目新增依赖写入 venv，基础 PyTorch 不改动。
-
-主要版本固定在 `requirements.txt`。MMCV 使用官方 CUDA 12.1 / torch 2.1 预编译 wheel，避免编译 CUDA 扩展。`scripts/verify-env.py` 检查模块注册、CUDA 可变形注意力的前向与反向运算，以及 CUDA NMS。它不等同于完整模型训练验证。
-
-安装日志：服务器 `/root/autodl-tmp/install-env.log`。环境检查与完整依赖快照保存在 `reports/`，不上传 Git。预训练权重、单图推理、UIIS 数据和短训练评估流程均已验证。
-
-本文件夹是本地代码的唯一工作目录。Codex 修改这里的文件，VS Code 打开同一目录即可看到修改。不要在本地和服务器分别修改同一份代码。
-
-## 正式一轮训练就绪检查（2026-10-12 晚间）
-
-已在服务器重新构建候选配置和真实训练数据加载器：MMDetection 3.3.0、MMEngine 0.10.7；训练图片 3937 张、batch 2，每轮 1969 步；COCO 初始权重存在。仅构建加载器，没有启动训练，也没有再次逐图完整读取。
-
-当时检查发现 prepare-uiis-baseline.py 仅生成配置或运行 20 步，缺少正式入口。现已补齐入口、后台会话、首轮停止及阶段备份，并通过下文隔离测试；全量正式第一轮仍未执行。
-
-本地仓库不是 Mask2Former 全部源码。它导入服务器虚拟环境中的 MMDetection/MMEngine，复用已经安装的模型和训练实现。实测源码位置（服务器路径）：
-
-- `.venv/lib/python3.10/site-packages/mmdet/models/detectors/mask2former.py`：模型入口，30 行，复用父类，不能把这一文件当作全部网络。
-- `.venv/lib/python3.10/site-packages/mmdet/models/dense_heads/mask2former_head.py`：分割头文件，459 行。
-- `.venv/lib/python3.10/site-packages/mmdet/models/layers/msdeformattn_pixel_decoder.py`：像素解码器文件，246 行。
-- `.venv/lib/python3.10/site-packages/mmengine/runner/runner.py`：通用训练管理文件，2413 行。
-
-这些只是部分依赖文件，还包含 ResNet、Transformer 层、损失、数据处理和底层 PyTorch/MMCV 算子。以后适配模块应将自定义代码放在本地项目并注册导入，不直接改服务器 site-packages，保证 VS Code 可见、Git 可追踪。检查结果保存在本地和服务器 `reports/baseline-readiness-audit.json`。
-## 实验路线
-
-使用 UIIS 数据集，先跑通 MMDetection 的 Mask2Former ResNet-50 基线，再分别验证 WaterMask 模块的适配效果。当前已完成依赖、COCO 单图推理、UIIS 数据准备及 100 次迭代流程测试，尚未进行正式基线训练和模块适配。
-
-## 下次服务器开机后的重连约定
-
-用户只需说“服务器开启了”。Codex 先检查当前会话的网络及项目私钥读取授权，必要时通过 request_permissions 定向申请，再运行 `powershell -ExecutionPolicy Bypass -File ./check-server.ps1`。不要求完全访问权限，不改密钥 ACL，不重复安装公钥。固定流程已写入 AGENTS.md，后续项目任务应遵循。
-
-2026-10-12 实测：未重新取得有效网络访问时出现域名解析失败；申请网络与精确私钥读取权限后，检查约 0.99 秒返回 SERVER_READY。GPU 为 V100 32GB、显存占用 0，项目 Python 与两份原始标注路径存在，数据盘可用约 48GB。报告在 `reports/server-check.txt`。这只是路径存在性检查，不替代环境算子或数据全量校验。
-
-服务器开关机与 Codex 本机执行授权是两个独立层面；此前公钥被服务器接受而本地私钥读取被拒绝，不能归因于服务器关机。授权的生效范围可能是当前轮次或会话，不能承诺跨重启永久有效。成功后继续已授权步骤；准备启动训练前先检查已有进程，防止重复训练。需要用户审批时仍会出现正式授权提示，不能保证所有重连都无需交互。
-
-本次新增脚本及约定已本地验证，未启动训练。服务器同步与 GitHub 推送分别执行，GitHub 凭据故障不应阻塞 SSH 检查。
-## 连接服务器
-
-在本文件夹打开 PowerShell，执行：
+用户说“服务器开启了”后，先确认网络和项目私钥读取授权；必要时定向申请，不要求完全访问、不改 DENY ACL、不复制私钥绕过权限、不重复安装公钥。然后在本地项目目录运行：
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File .\connect.ps1
+powershell -ExecutionPolicy Bypass -File ./check-server.ps1
+powershell -ExecutionPolicy Bypass -File ./connect.ps1
 ```
 
-SSH 密钥登录已经配置完成，正常情况下无需密码。如果提示密码，先检查密钥路径和服务器登录配置；不要把密码或私钥写入代码、聊天或 Git。
+服务器别名 underwater-gpu，地址 region-46.seetacloud.com、端口 27686；若平台改变以最新登录信息为准。密钥和 known_hosts 在忽略目录 `.local/`，主机指纹变化需核实。此前重连约 0.99 秒、关机再开机约 1.57 秒成功，不保证跨应用重启权限永久生效；本机私钥访问失败不能归因为服务器关机。
 
-主机地址为 region-46.seetacloud.com，端口 27686。首次连接登记的主机指纹保存在本地忽略目录 `.local`。后续主机指纹变化会拒绝连接，需核实后处理。
+代码同步：
 
-## 常用操作与同步规则
+```powershell
+powershell -ExecutionPolicy Bypass -File ./sync-code.ps1
+```
 
-首次设置使用 `setup-ssh.ps1`，已经验证 `SSH_KEY_OK`。专用私钥保存在 `.local/id_ed25519`，不得上传或提交。
+覆盖远程同名文件，不删除旧文件；源码改名/删除需核对远端。数据传输与结果下载是独立步骤。不要在两端各自修改同一份代码。
 
-之后执行 `powershell -ExecutionPolicy Bypass -File .\sync-code.ps1` 将代码同步到 `/root/autodl-tmp/underwater-segmentation`。脚本按 Git 忽略规则打包文件，覆盖远程同名代码，不删除远程多余文件；重命名或删除代码后需另行核对远程文件。数据、权重和训练输出应保存在被忽略的目录中。代码同步与短训练脚本均已验证。
-
-服务器重新检查环境：
+服务器状态检查：
 
 ```bash
 cd /root/autodl-tmp/underwater-segmentation
-.venv/bin/python scripts/verify-env.py
-.venv/bin/python -m pip check
+bash scripts/run-training.sh status
+cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 ```
 
-完整工作流程：本地修改 → 同步服务器 → 运行并检查结果 → 更新 README → 提交 Git → 推送 GitHub。代码同步不是实时自动进行；GitHub 推送与服务器同步互相独立。
+必要时用 `.venv/bin/python scripts/verify-env.py` 与 `.venv/bin/python -m pip check` 复验环境，不必每次重装。
 
-## 工作记录
+正式历史入口 `bash scripts/run-training.sh first` / `resume` **已完成，不再执行**。first 拒绝覆盖已有目录；resume 拒绝满预算或协议不同。恢复核对优化器/调度和进度，不保证随机增强与不中断训练逐位一致。新实验需要独立配置和目录。
 
-| 日期 | 已执行步骤 | 结果 |
+评估入口 `.venv/bin/python scripts/evaluate-uiis.py` 因现存 metrics.json 会拒绝覆盖，不删除结果绕过。报告入口 `.venv/bin/python scripts/report-uiis-evaluation.py` 会重写报告及图，后续修改展示时先保留旧结果。
+
+旧 uiis-overnight 监控已取消，不重启。screen 后台任务不依赖本机/SSH 在线；GPU 工作运行时需服务器开机，任务结束可普通关机。工作流程：本地修改 → 必要检查 → 同步服务器 → 执行核验 → 取回结果 → 更新 README → 提交/推送。GitHub 与服务器同步互相独立。
+
+## 11. 完整工作记录
+
+时间为北京时间；无准确时分的记录只写日期，不补造时间。历史未完成状态已被后续结果取代。
+
+| 时间 | 步骤/决策 | 当时结果与证据 |
 | --- | --- | --- |
-| 2026-10-12 | 建立本地项目、Git、服务器密钥登录及同步脚本 | 已验证，VS Code 可查看同一份代码 |
-| 2026-10-12 | 安装依赖并测试 GPU 算子 | 已通过，版本与报告已保存 |
-| 2026-10-12 | 恢复联网授权，下载权重并运行 COCO 示例图 | 完整推理通过，图片和 JSON 已取回本地 |
-| 2026-10-12 | 修复 GitHub 网络连接 | 项目级代理设置生效，fetch 成功；自动推送仍有凭据权限阻碍 |
-| 2026-10-12 | 整理 Markdown 进度与交接说明 | 已核对环境报告及推理记录；后续从 UIIS 数据准备开始 |
-| 2026-10-12 | 下载、补传并审计 UIIS | 本地/服务器哈希校验通过；图片和掩码结构通过；发现 1 对跨划分重复，正式实验前确定处理方式 |
-| 2026-10-12 | 官方 UIIS 划分短训练与恢复测试 | 50 → 100 次训练、checkpoint/优化器检查及 691 张图 bbox/segm 评估通过；报告取回本地；GitHub 推送仍受凭据权限限制 |
-| 2026-10-12 | 核对正式数据使用方案 | 复核 3937/691 数量、重复图片 SHA256 和各类别图片数；曾记录去重及约 10% 内部验证方案；未执行，已被用户后续要求取代 |
-| 2026-10-12 | 按用户要求保留官方划分 | 保留 3937/691 及重复图片；所有对照共用数据规则；最终评价待定；未修改数据或启动训练 |
-| 2026-10-12 | 准备基线候选配置并测容量 | 官方划分保留；1024 LSJ、batch 2、FP32 的 20 步检查通过；报告回传，完整训练未启动 |
-| 2026-10-12 | 晚间重连恢复 | 定向授权后 SSH_KEY_OK；V100 显存占用 0，项目目录存在；未启动训练 |
-| 2026-10-12 | 固化开机重连流程 | 新增 check-server.ps1 与 AGENTS 规则；定向授权后约 0.99 秒检查通过，未启动训练 |
-| 2026-10-12 23:15 | 用户关机再开机后的重连验证 | 保持当前 Codex 会话，复用已有授权；首次检查约 1.57 秒返回 SERVER_READY。V100 显存占用 0，环境/标注路径存在，数据盘可用 48GB；未启动训练。此结果不验证 Codex 重启后的授权持久性。 |
-| 2026-10-12 | 核对正式一轮训练就绪程度及源码位置 | 真实加载器 3937 图/1969 步、预训练权重存在；正式入口和阶段备份待实现；未启动训练 |
-| 2026-10-12 | 补齐正式入口并执行后台隔离测试 | first/resume、状态恢复、最近 3 份和阶段备份、重复启动防护通过；报告已回传；未启动正式一轮 |
-| 2026-10-12 23:29 | 正式启动前复核 | 数据/权重哈希、环境 GPU 算子、配置映射、15 文件同步、空闲锁/进程及磁盘通过；平台余额/定时关机未核验；未启动训练 |
-| 2026-10-12 23:30–23:31 | 启动正式第一轮 | screen 后台运行，重新连接确认 50/1969 步；首轮保存后暂停，未启动后续轮次 |
-| 2026-10-12 23:35 | 配置首轮自动验收并接续整夜训练 | 验收单测通过；uiis-overnight 后台确认 waiting_for_first_epoch，正式训练 350/1969 步；未重启首轮，最终仍保持开机 |
-| 2026-10-12 23:40 | 用户要求首轮结束暂停 | 精确关闭 3054.uiis-overnight，监督锁已释放并记录 cancelled_by_user；保留 2643.uiis-training，确认仍在第 1 轮 800/1969 步；不会自动续训 |
-| 2026-10-12 23:54 | 第一轮结束及人工复核 | 1969 步完成，exit=0，耗时约 24 分钟；epoch_1.pth 529767324 字节可读取，模型/优化器数值有限且调度状态存在；39 条训练日志无 NaN/Inf；GPU 空闲，自动续训关闭，未算 AP |
+| 前期讨论，确切日期未记录 | 水下实例分割、WaterMask/Mask2Former、生成数据和第二研究线讨论 | 选择 UIIS + Mask2Former 主线；第二点仍待定 |
+| 2026-10-12 | 本地项目、Git init、SSH 与同步脚本 | 55c6c0a；首次公钥脚本引号处理失败，修正后 PUBLIC_KEY_INSTALLED / SSH_KEY_OK |
+| 2026-10-12 | 确定每步更新 README、提交和同步要求 | 18c76e7；GitHub 与训练服务器分别同步 |
+| 2026-10-12 | 固定依赖安装/GPU 算子检查 | 050a6d7；导入、前后向、NMS、pip check 通过 |
+| 2026-10-12 | 权重与 COCO 单图演示 | 97bdcfc；服务器 GitHub 超时，经本地下载上传后完成 |
+| 2026-10-12 | Git 网络排查、交接文档整理 | bf5b98f、a41d12e；代理解决连接超时，自动凭据调用仍失败 |
+| 2026-10-12 | UIIS 下载、补传及全量审计 | 59d3bc4；哈希/结构通过，发现一对跨划分重复 |
+| 2026-10-12 | 50→100 步保存/恢复/全量测试 | 5737383；UIIS_SMOKE_ALL_OK，mask AP 4.7，仅排错 |
+| 2026-10-12 | 曾提出去重和内部验证方案 | 4f07b3b；只记录，未执行 |
+| 2026-10-12 | 用户明确保留原始划分和重复图片 | a6ee016；取代旧方案，所有对照共用规则 |
+| 2026-10-12 | 候选配置与 20 步容量检查 | 28a0750；1024 LSJ / batch 2 / FP32 通过，当时还未正式训练 |
+| 2026-10-12 晚间 | SSH 本机私钥权限失败排查 | 8859256、8b7e8ea、b834e45；定向授权后恢复，未改 DENY，未证实与服务器关机有因果关系 |
+| 2026-10-12 | 固化重连流程 | f54d0fc；新增 check-server.ps1 及 AGENTS 约定 |
+| 2026-10-12 23:15 | 用户关机再开机验证 | 878ac33；约 1.57 秒 SERVER_READY，未测试跨应用重启授权持久性 |
+| 2026-10-12 晚间 | 正式训练就绪及源码核查 | 93ad008；发现当时缺少正式入口，已有脚本仅生成配置/运行 20 步，后续补齐 |
+| 2026-10-12 23:22–23:24 | 正式入口及独立恢复测试 | 63d2bd4；4 图/5 小轮，保存、恢复、保留、防重复/覆盖通过 |
+| 2026-10-12 23:29 | 正式前全面复核 | 5e165b5；数据、权重、15 文件、环境、配置和空闲锁/进程/磁盘通过；平台余额/定时关机未核验 |
+| 2026-10-12 23:30:33 | 正式首轮启动 | b24fec7；screen 后台，另次 SSH 确认推进，首轮保存后停止 |
+| 2026-10-12 23:35 | 当时要求自动验收后续训 | 37ab8f0；门控自测通过，监控 waiting_for_first_epoch，当时尚未实际续训 |
+| 2026-10-12 23:40 | 用户改为首轮后暂停共同检查 | d260e15；停止 uiis-overnight、释放监督锁，保留训练进程；自动方案取消 |
+| 2026-10-12 23:54:30 | 首轮完成及人工验收 | 8fc9c8c；1969 步、exit=0、权重/数值通过；未算首轮 AP |
+| 2026-10-12 23:57:55–23:58:10 | 用户同意后继续剩余 35 轮 | de6e3cc；epoch_1 恢复，RESUME_STATE_VERIFIED；不是旧监控自动接续 |
+| 2026-10-13 08:07 | 训练健康巡检 | 913421b；第 22 轮 1500/1969 步，约 60.4%，无发现阻塞；当时 ETA 仅估计 |
+| 2026-10-13 13:41:41 | 36 轮全部结束 | 控制台 END exit=0，70884 步 |
+| 2026-10-13 14:09 | 完成结果与权重核验 | f688863；最终模型可加载、有限值、优化器/调度及阶段备份存在；报告取回 |
+| 2026-10-13 14:17 | 用户授权后全量评估和报告 | 9a68157；691 张，mask AP 32.6；指标、预测、日志、前 6 张图取回 |
+| 2026-10-13 评估后 | 用户询问关机 | 已说明可普通关机，未代操作；是否关机未核验，权重待备份 |
+| 2026-10-13 | 复核前 6 张效果 | 8316630；记录真实错误及展示局限，不改模型或指标 |
+| 2026-10-13 | WaterMask 公布值比较 | 42a4b97；R50 AP 数值差 +6.2，仅外部参考，未复现 |
+| 2026-10-13 | AP 定义及 3× 比较口径核实 | a957686；3×=36 轮，训练策略不同，预训练未完全对齐 |
+| 2026-10-13 | COCO 解释、工作总结、论文对比规则 | 明确预训练与评分用途、外部参考 vs 自身严格消融；此前未完整记录到 README |
+| 2026-10-13 本轮 | 全面核对和整理文档 | 对照 Git、脚本、配置、报告、日志和历史讨论，补齐记录与下一步；首次写入因 PowerShell/Python 编码失败未修改文件，随后用 UTF-8 写入修正 |
 
-首轮报告：reports/first-epoch-review.json。权重 SHA256：2662f3b7584c642e8fc1809254d099ad559c33797733ffb1fdcc91f81b82b733。第 50 步日志平均 loss 43.4699，第 1950 步为 25.92，期间有波动；不能把训练 loss 降低解释为测试精度提升。剩余 35 轮按首轮速度粗估约 14 小时，等待用户继续指令。
-| 2026-10-12 23:57–23:58 | 用户确认后启动剩余 35 轮 | screen 3723.uiis-training Detached；从 epoch_1.pth 恢复，RESUME_STATE_VERIFIED 确认轮数/步数/优化器/调度器一致，RUNNING resume；总目标 36 轮，旧自动接续监控仍关闭 |
+## 12. 后续待办和文档检查
 
-当前续训不依赖本地电脑或 SSH 在线；完成或报错后服务器保持开机。预计剩余约 14 小时，实际随运行变化；平台余额和定时关机设置仍未核验，不能保证没有外部停机。此处记录的是启动成功，不是训练完成。
+| 顺序 | 待办 | 状态/验收条件 |
+| --- | --- | --- |
+| 1 | 改进诊断图 | 未做；原图/标注/预测、实例区分、类别/分数，固定示例，不只挑好图 |
+| 2 | 完整预测误差分析 | 未做；量化漏检、错分类、实例拆分/重复及轮廓问题，确定首个目标 |
+| 3 | 模块适配与消融 | 未做；固定基线条件，逐个验证收益和开销 |
+| 4 | 完善 WaterMask 比较 | 已核对公开数字和部分配置；实际预训练和统一评价待核对，是否复现另定 |
+| 5 | 确定第二研究点 | DINOv2/DiveSeg/TIDE 为候选，不同时全面铺开 |
+| 下次服务器在线 | 下载权重与运行协议，校验哈希；同步新文档 | 未完成，不声称权重已经本地备份 |
+| 独立维护 | 修复 Codex 自动 GitHub 凭据调用 | 未解决；推送故障不代表训练失败 |
 
-### 六张示例复核（2026-10-13）
-
-用户反馈观感较差后，逐张读取对照图并核对原始标注及 predictions.segm.json，以下预测计数均限显示阈值 score >= 0.5，不改变正式 AP：
-
-| 图片 | 人工标注 | 当前显示预测 | 观察 |
-| --- | --- | --- | --- |
-| L_1000.jpg | fish 2、reefs 4、sea-floor 2 | fish 2、reefs 3 | 鱼主体较接近；海底未显示，礁石范围及实例划分有偏差 |
-| L_1001.jpg | reefs 1 | reefs 1 | 目标上方细长部分明显缺失 |
-| L_1025.jpg | reefs 1、fish 4 | reefs 1、aquatic plants 1 | 四条鱼均未达到显示阈值；鱼最高得分 0.410，不能声称模型完全没有输出鱼候选 |
-| L_1029.jpg | reefs 1 | fish 1、reefs 1 | 同一目标附近有不同类别预测叠加，需进一步按掩码匹配核实；标注类别本身也值得复核，但不擅自修改 |
-| L_1032.jpg | fish 1 | fish 1 | 主要鱼体轮廓较接近，不能说六张全部分割失败 |
-| L_1046.jpg | reefs 5 | reefs 15、aquatic plants 1 | 明显的实例数量失配，多报/拆分/重叠候选需进一步量化，不能归结为单纯边缘不准 |
-
-绘图限制：颜色按类别分配，不按实例区分；未显示类别文字、实例编号或分数，重叠掩码重复透明叠加会改变颜色。因此当前图不适合单独判断实例个数与错分类，但这些展示问题不否定上述真实预测错误。AP 32.6 不代表像素正确率 32.6%，也不保证每张视觉效果好。小目标 AP 8.2 与漏掉小鱼的现象一致，但还未做全数据集误差归因，不能据此断定训练不足或边界模块能解决。
-
-建议下一步先改进诊断展示（原图/人工标注/预测、实例区分和类别分数）并分析漏检、错分类、实例拆分与轮廓误差，再决定首个模块；不因这六张图直接延长训练或一口气加入三个模块。
-
-此次只使用本地已有结果复核，未连接或启动服务器、未修改权重或指标。README 已本地更新；服务器文档尚未同步，待下次正常连接同步。GitHub 推送以实际命令结果为准，此前凭据管理器问题仍未解决。
-
-### 与 WaterMask 官方公布数字初步比较（2026-10-13）
-
-核对来源：https://github.com/LiamLian0727/WaterMask#main-results 。尚未在本项目复现或重新评估 WaterMask，以下属于官方公布值与本次实测值的比较，不是完全统一训练条件的对照实验。
-
-| 模型 | 分割 AP | AP50 | AP75 |
-| --- | ---: | ---: | ---: |
-| WaterMask R50-FPN，官方 3x | 26.4 | 43.6 | 28.8 |
-| WaterMask R101-FPN，官方 3x | 27.2 | 43.7 | 29.3 |
-| 本次 Mask2Former R50，36 轮 | 32.6 | 47.6 | 35.3 |
-| 本次减 WaterMask R50 | +6.2 | +4.0 | +6.5 |
-| 本次减 WaterMask R101 | +5.4 | +3.9 | +6.0 |
-
-上述差值为 AP 点数，不是相对百分比。当前数字高于 WaterMask 公布值，不代表六张示例没有问题，也不证明模块改进有效。我们使用 COCO 实例分割预训练整模型；对方具体预训练、训练策略、输入尺度和评估设置仍需逐项对齐。论文改进贡献应重点看相同配置下自己的改进模型相对于 Mask2Former 32.6 的增益，不能把原版基线超过历史方法当作自己的创新。服务器未启动；本次只更新本地记录，服务器文档待重连同步。GitHub 自动推送仍以实际输出为准。
-
-### 比较口径补充核实（2026-10-13）
-
-已核对 WaterMask 原 mmdet2 分支 configs/_our_/water_r50_fpn_ms3x.py：max_epochs=36，学习率下降节点为 27/33，SGD lr=0.0025，使用短边 480–800 多尺度缩放。当前 Mask2Former 同为 36 轮、27/33 节点，但使用 AdamW lr=0.0001、LSJ 1024 训练增强及 COCO 整模型预训练，因此不能把“同骨干、同轮数”说成所有条件相同。WaterMask 的 1x 配置继承 Mask R-CNN R50-FPN 并换成 WaterRoIHead/WaterMaskHead；与 Mask2Former 是不同完整架构。官方当前 README 的 R50 3x 配置链接失效，已改读原 mmdet2 分支源码；尚未逐层核实对方预训练加载及论文运行时覆盖参数，不能断言 +6.2 AP 全由架构贡献。
-
-配置来源：https://raw.githubusercontent.com/LiamLian0727/WaterMask/mmdet2/configs/_our_/water_r50_fpn_ms3x.py 。COCO 指标定义：https://github.com/cocodataset/cocoapi/blob/master/PythonAPI/pycocotools/cocoeval.py 。AP50/AP75 分别采用掩码 IoU 0.50/0.75 的匹配标准；主 AP 在 0.50 到 0.95、步长 0.05 的十个阈值及类别上平均。AP 综合预测排序、误报和漏检，不是 IoU 本身，也不是像素准确率；绘图置信度 0.5 与 AP50 的 IoU 0.5 是不同概念。
-
-“尚未加入自行设计模块”不等于“模型未经优化”：当前已经使用完整 Mask2Former 架构及预训练，并适配 UIIS 类别及训练配置。WaterMask 内部模块相对其 Mask R-CNN 基础有效，不意味着移植到 Mask2Former 必然有效。上述补充为本地文档更新，服务器待重连同步。
+本轮仅修改 README.md、AGENTS.md；不修改数据、训练脚本或成绩，不启动服务器任务。旧版可在 Git 历史查看。文档核验已通过：49 个本地链接有效、17 个脚本均有索引、核心指标和权重哈希与 JSON 一致、时间线提交均存在、代码围栏闭合且无替换乱码，git diff --check 通过；记录在忽略目录 reports/readme-review.json。服务器文件和电源本轮未重新核验。
