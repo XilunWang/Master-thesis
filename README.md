@@ -396,7 +396,7 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 
 ## 13. 导师汇报材料（持续维护）
 
-2026-10-13 已制作 13 页研究汇报：[打开 PPT](presentations/output/水下实例分割研究进展_20261013_v1.pptx)。沿用用户提供模板的校徽、配色、字体和母版，涵盖数据规则、36轮正式基线、AP指标、WaterMask参考比较、六张固定案例和后续路线。明确当前 P2，尚无模块改进成绩；第二点未定。
+2026-10-13 已制作 13 页研究汇报：初稿（已按用户要求删除，当前版见第15节）。沿用用户提供模板的校徽、配色、字体和母版，涵盖数据规则、36轮正式基线、AP指标、WaterMask参考比较、六张固定案例和后续路线。明确当前 P2，尚无模块改进成绩；第二点未定。
 
 [维护说明](presentations/README.md)；[生成源](presentations/build.mjs)；[版本配置](presentations/status.json)。后续仅在大阶段完成或用户明确要求时更新PPT并保留旧版本；日常步骤只更新README和Git。模板及 PPT 输出保存在本地忽略目录，不随 Git 推送；源代码与维护规则进入版本管理。
 
@@ -415,7 +415,7 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 - 新图分别显示原图/人工标注/预测，每个面板独立编号，附类别及预测分数；编号不代表跨面板配对。图例不遮挡物体，保留原6张样例而非挑好图。
 - 新脚本：[analyze-uiis-errors.py](scripts/analyze-uiis-errors.py)、[verify-uiis-error-analysis.py](scripts/verify-uiis-error-analysis.py)。本地依赖numpy/Pillow/pycocotools；pycocotools 2.0.11安装于忽略目录.local/analysis-libs（未改变服务器环境）。运行时将该目录加入PYTHONPATH，使用bundled Python 3.12+；分析脚本自动定位项目根目录，验证脚本从项目根目录运行。
 - 安装首次因系统临时目录权限失败，改用项目内.local/pip-tmp后成功；首次分析主动拒绝crowd标注，补齐忽略规则后通过官方复核。
-- PPT更新为[20261014 v2，15页](presentations/output/水下实例分割研究进展_20261014_v2.pptx)，新增全量诊断和误报构成，v1保留。自动finalizer依旧realpath EPERM，采用独立结构/几何检查及重导入核验，原生PowerPoint未验证。
+- PPT更新为当时的15页诊断版（已按用户要求删除），新增全量诊断和误报构成；后续已整合并重置版本号。自动finalizer依旧realpath EPERM，采用独立结构/几何检查及重导入核验，原生PowerPoint未验证。
 - 本轮未连接服务器、未训练、未调参，权重仍待备份。当前仍为P2；下一步边界专用评价及P3模块接口核对。Git本地与推送结果见下方执行记录。
 
 2026-10-14 Git执行结果：研究分析与PPT源已本地提交 85c6bf3；push失败，仍是凭据管理器/MSYS NtCreateDirectoryObject 0xC0000022。尚未同步GitHub或服务器。
@@ -424,8 +424,10 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 
 用户调整要求：以后仅在大阶段完成或明确要求汇报时更新PPT。日常步骤仅更新README和Git，不再每次生成、渲染PPT；实验材料先积累在报告中。该规则替代此前按每次实质进展更新PPT的约定，已同步AGENTS与presentations/README。
 
-[当前统一阶段汇报：整合版v3，16页](presentations/output/水下实例分割阶段汇报_20261014_整合版_v3.pptx)。合并v1正式基线与v2全量诊断，去重保留原模板，增加两种评估口径的说明；研究进展仍为P2，未新增实验或修改成绩。旧版保留。
+[当前统一阶段汇报：v1，16页](presentations/output/水下实例分割阶段汇报_20261014_v1.pptx)。合并v1正式基线与v2全量诊断，去重保留原模板，增加两种评估口径的说明；研究进展仍为P2，未新增实验或修改成绩。用户随后要求仅保留整合版并重新从v1编号，两个旧PPT已删除。
 
 自动finalizer仍因realpath EPERM未完成；独立结构/几何检查零发现，重导入16页通过，修改页面已视觉检查；未在PowerPoint原生程序验证。PPT成品本地保存，生成源和规则进入Git；远程同步以本次实际执行结果为准。
 
 本次本地提交已完成（主改动 ab86ec0）；GitHub push仍因凭据管理器/MSYS 0xC0000022失败，未同步远程。
+
+2026-10-14 版本清理：仅保留16页整合内容，重命名为水下实例分割阶段汇报_20261014_v1.pptx；重命名前后SHA256一致，未重新生成PPT。删除两份旧PPT，生成配置和文档链接已更新，后续大阶段更新依次v2、v3。

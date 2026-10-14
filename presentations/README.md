@@ -1,6 +1,6 @@
 # 研究汇报 PPT 维护
 
-当前版本：output/水下实例分割阶段汇报_20261014_整合版_v3.pptx（2026-10-14，16页）。
+当前版本：output/水下实例分割阶段汇报_20261014_v1.pptx（2026-10-14，16页）。
 沿用用户提供的 4.27组会王雨乐.pptx 的母版、校徽、配色及字体；不沿用原作者身份。原模板保存在 templates/group-meeting-template.pptx，仅本地使用。
 
 ## 更新规则
@@ -17,12 +17,10 @@
 使用 Codex Presentations skill 的 bundled Node 运行 build.mjs；可通过 CODEX_PRESENTATION_RUNTIME 和 CODEX_PRESENTATION_SKILL 指定运行时及技能路径。
 构建器导出 .build/candidate.pptx、逐页 PNG，再调用 finalizer 写入独立输出。每次均需核对所有页、数据、可编辑表格、模板样式、讲者备注来源。
 
-本版记录：finalizer 在 Node realpath 阶段发生 EPERM，定向授权后仍失败，未宣称完整终检通过。已独立运行原生结构与几何检查器，均为零发现；13 页逐页检查完成，原生表格页 3/4/5/6/7/12 确认；Artifact Tool 重导入 13 页成功。检查后将候选副本交付到 output。尚未在 PowerPoint 原生程序中打开验证。
+早期检查记录：finalizer 在 Node realpath 阶段发生 EPERM，定向授权后仍失败，未宣称完整终检通过。已独立运行原生结构与几何检查器，均为零发现；13 页逐页检查完成，原生表格页 3/4/5/6/7/12 确认；Artifact Tool 重导入 13 页成功。检查后将候选副本交付到 output。尚未在 PowerPoint 原生程序中打开验证。
 
 ## 版本记录
 
-- v1 / 2026-10-13：研究任务、数据规则、36轮训练配置、完整指标、小目标与类别表现、WaterMask官方参考比较、6张固定案例、第一点计划与第二点候选。尚无自有模块成绩。
-
-- v2 / 2026-10-14：15页，新增全量阈值诊断与误报构成，更新当前进展。最新输出 output/水下实例分割研究进展_20261014_v2.pptx。依赖新增 reports/uiis-error-analysis/diagnostics.json，重建前运行分析脚本。v1保留。finalizer仍受EPERM阻挡，独立结构/几何检查和重导入作为已执行检查，不能称完整finalizer通过。
-
-- v3 / 2026-10-14：整合v1/v2为16页统一阶段汇报，新增正式评估与误差诊断口径说明。当前输出为 output/水下实例分割阶段汇报_20261014_整合版_v3.pptx。用户改为仅大阶段完成或明确要求时更新PPT，取代先前逐次更新。独立结构/几何及重导入通过；finalizer仍因EPERM受阻。
+- v1 / 2026-10-14：16页整合阶段汇报，包含正式基线、全量阈值诊断、固定案例、两类报告口径和后续路线。依赖 reports/uiis-error-analysis/diagnostics.json。
+- 用户要求重新从v1编号：原整合版仅重命名，SHA256保持一致；此前13页和15页PPT已删除，output目录只保留此版本。后续大阶段或明确要求更新时从v2递增。
+- 本版独立结构/几何检查及16页重导入通过；自动finalizer仍因realpath EPERM受阻，未在原生PowerPoint验证。此轮仅重命名、清理和更新引用，未重建或重渲染。
