@@ -20,7 +20,8 @@ for(const slide of proto.slides){slide.elements=[];slide.speakerNotes=undefined;
 const p=Presentation.load(proto);p.slides.keep([0,1,5]);
 const cover=p.slides.items[0], base=p.slides.items[1], close=p.slides.items[2];
 const content=[base]; for(let i=1;i<11;i++) content.push(base.duplicate());
-p.slides.reorder([cover,...content,close].map(s=>'sl/'+s.id));
+const diagnostics=base.duplicate(), errors=base.duplicate();
+p.slides.reorder([cover,...content.slice(0,9),diagnostics,errors,...content.slice(9),close].map(s=>'sl/'+s.id));
 const teal='#008899',ink='#172126';
 function tx(s,text,x,y,w,h,size=24,opts={}){
  const a=s.shapes.add({geometry:'textbox',name:opts.name||text.slice(0,24),position:{left:x,top:y,width:w,height:h},fill:'none',line:{fill:'none',width:0}});
@@ -76,23 +77,36 @@ note(s,'仅比较官方公布值与本次实测值。官方 3× 配置为36轮�
 const cases=[
  ['案例一：主体识别与轮廓缺失',[4,1],['L_1032：鱼主体轮廓较接近标注','L_1001：上方细长部分缺失'],'同一模型在不同图像上的效果差异明显'],
  ['案例二：小目标与实例数量失配',[2,5],['L_1025：标注 4 条鱼，显示 0 条','L_1046：标注 5 个礁石，显示 15 个'],'漏检与多报需要分别分析，不能仅归结为边界'],
- ['案例三：区域划分与类别混淆',[0,3],['L_1000：鱼主体较接近，海底未显示','L_1029：同一目标附近出现鱼和礁石预测'],'当前同类同色，后续补充实例编号、类别和置信度']];
+ ['案例三：区域划分与类别混淆',[0,3],['L_1000：鱼主体较接近，海底未显示','L_1029：同一目标附近出现鱼和礁石预测'],'原报告图同类同色，新诊断报告已补实例编号与分数']];
 for(let i=0;i<3;i++){s=content[6+i];heading(s,7+i,cases[i][0]);await pic(s,cases[i][1][0],46,221,574,323);await pic(s,cases[i][1][1],658,221,574,323);tx(s,cases[i][2][0],46,175,590,40,22);tx(s,cases[i][2][1],658,175,585,40,22);tx(s,cases[i][3],52,560,1180,42,25,{color:teal});tx(s,'每幅图左侧为人工标注，右侧为预测。显示阈值 0.5，仅用于画图。',52,613,1180,35,21);note(s,'图片固定来自原报告前6张。展示阈值不用于AP计算。小鱼最高候选分数0.410，未显示不等于没有候选。实例数量差异为初步证据，尚未逐掩码匹配归因。','reports/uiis-baseline-36e-evaluation/examples；predictions.segm.json；README.md 第6节');}
-s=content[9];heading(s,10,'第一研究点：逐步验证模块适配');
-line(s,'当前 P2：量化漏检、错分类、实例拆分与轮廓误差',189,26);
+s=content[9];heading(s,12,'第一研究点：逐步验证模块适配');
+line(s,'当前 P2：已完成全量阈值诊断，边界质量仍待量化',189,26);
 line(s,'下一步 P3：核对 DSGAT、MFRM、BLL 的作用与接口',283,26);
 line(s,'先实现一个有针对性的适配，再做单模块及组合消融',377,26);
 line(s,'严格对照原版 32.6 AP，固定训练设置并记录计算开销',471,26);
 tx(s,'候选模块尚未实现，插入位置与效果均未定',65,582,1150,48,26,{color:teal});
 note(s,'这页是研究计划而非已完成贡献。先核对原文和源码、输入输出、损失及初始化，再选最小适配。不能预设三个模块都必须加入或必然提高。种子重复验证和负结果也要记录。','README.md 第2节 P2–P5、E0–E6');
-s=content[10];heading(s,11,'后续安排与待讨论问题');
-table(s,[['阶段','计划交付'],['近期：完成 P2/P3','可读诊断图、错误分析、首个模块适配说明'],['随后：P4/P5','单模块实验、消融表、稳定性与开销记录'],['第二研究点：P6/P7','DINOv2 / DiveSeg 为候选，先确定独立问题'],['论文整理：P8','两点方法与证据、已有方法对比、局限与复现说明']],65,189,1150,310,[365,785]);
+s=content[10];heading(s,13,'后续安排与待讨论问题');
+table(s,[['阶段','计划交付'],['近期：完成 P2/P3','已完成诊断图与阈值统计，待边界分析及接口核对'],['随后：P4/P5','单模块实验、消融表、稳定性与开销记录'],['第二研究点：P6/P7','DINOv2 / DiveSeg 为候选，先确定独立问题'],['论文整理：P8','两点方法与证据、已有方法对比、局限与复现说明']],65,189,1150,310,[365,785]);
 tx(s,'需要讨论：第一点优先解决哪类错误？第二点如何形成独立贡献？',65,534,1150,92,27,{color:teal});
 note(s,'第二点未定案。TIDE 可作诊断工具，本身不自动构成创新。当前已有完整基线，尚无自有改进成绩。下一次汇报重点是问题证据与适配方案，不承诺预期涨点。','README.md 第2节、第12节');
+
+const diag=JSON.parse(await fs.readFile(path.join(ROOT,'reports/uiis-error-analysis/diagnostics.json'),'utf8'));
+heading(diagnostics,10,'全量诊断：小目标更容易未匹配');
+table(diagnostics,[['置信度阈值','预测数','匹配数','未匹配标注'],...['0.3','0.5','0.7'].map(t=>[t,...['predictions','matched','missed'].map(k=>String(diag.totals[t][k]))])],65,185,1150,245,[340,270,270,270]);
+tx(diagnostics,'置信度 0.5 时：小目标匹配率 54.9%，大目标 73.1%',65,466,1150,62,26,{color:teal});
+tx(diagnostics,'691 张图，3748 个普通标注，36 个 crowd 标注单独处理\n同类别 mask IoU ≥ 0.5 配对；这是诊断统计，不是 AP',65,546,1150,90,24);
+note(diagnostics,'三档阈值的匹配数、忽略数和预测数已与官方 COCOeval 验证一致。阈值仅分析已有预测，不改变AP、模型权重或数据划分。','reports/uiis-error-analysis/diagnostics.json；scripts/verify-uiis-error-analysis.py');
+heading(errors,11,'误报构成与结论边界');
+table(errors,[['未匹配预测分组','数量'],['低重合背景','1596'],['同类定位不足','444'],['类别混淆','260'],['类别与定位混合','84'],['重复预测','51']],65,180,1150,335,[850,300]);
+tx(errors,'不能把所有问题都归结为边界：还存在漏检与误报',65,541,1150,48,25,{color:teal});
+tx(errors,'置信度 ≥ 0.5；78 个 crowd 忽略预测不计入上述分组',65,603,1150,40,23);
+note(errors,'自定义互斥分组，顺序为重复、类别混淆、同类定位、异类定位、背景。背景指mask IoU低于0.1，不证明语义上完全没有目标。不是TIDE，不量化AP损失。已生成固定前6张原图/标注/预测三栏诊断图，每实例单独编号与置信度。下一步补充边界指标后核对模块接口。','reports/uiis-error-analysis/report.md；scripts/analyze-uiis-errors.py');
+
 tx(close,'敬请老师批评指正',250,253,800,92,49,{font:'宋体',align:'center'});tx(close,'当前成果：正式基线与初步问题分析',235,421,820,48,30,{align:'center'});tx(close,status.date,965,599,245,44,28,{font:'宋体',align:'right'});note(close,'总结：已完成基线实验，下一步进入有针对性的模块适配。');
 const candidate=path.join(BUILD,'candidate.pptx');await (await PresentationFile.exportPptx(p)).save(candidate);
 for(let i=0;i<p.slides.items.length;i++){await fs.writeFile(path.join(BUILD,`slide-${i+1}.png`),new Uint8Array(await (await p.export({slide:p.slides.items[i],format:'png',scale:1})).arrayBuffer()));}
 const {finalizePresentation}=await import(pathToFileURL(path.join(SKILL,'container_tools/artifact_tool_utils.mjs')).href);
 const hash=crypto.createHash('sha256').update(await fs.readFile(TEMPLATE)).digest('hex');
-const result=await finalizePresentation({workspaceDir:ROOT,candidatePath:candidate,finalPath,pythonExecutable:path.join(RUNTIME,'python/python.exe'),integrityValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-heading-fit'],requiredNativeTableOwnerSlides:[3,4,5,6,7,12],fontPolicy:{basis:'reference',families:['宋体','黑体'],referencePath:TEMPLATE,referenceSha256:hash},verifyArtifactToolImport:true,receiptPath:path.join(BUILD,status.outputName+'.validation.json')});
+const result=await finalizePresentation({workspaceDir:ROOT,candidatePath:candidate,finalPath,pythonExecutable:path.join(RUNTIME,'python/python.exe'),integrityValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-heading-fit'],requiredNativeTableOwnerSlides:[3,4,5,6,7,11,12,14],fontPolicy:{basis:'reference',families:['宋体','黑体'],referencePath:TEMPLATE,referenceSha256:hash},verifyArtifactToolImport:true,receiptPath:path.join(BUILD,status.outputName+'.validation.json')});
 console.log(JSON.stringify(result));
