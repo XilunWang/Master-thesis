@@ -398,7 +398,7 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 
 2026-10-13 已制作 13 页研究汇报：[打开 PPT](presentations/output/水下实例分割研究进展_20261013_v1.pptx)。沿用用户提供模板的校徽、配色、字体和母版，涵盖数据规则、36轮正式基线、AP指标、WaterMask参考比较、六张固定案例和后续路线。明确当前 P2，尚无模块改进成绩；第二点未定。
 
-[维护说明](presentations/README.md)；[生成源](presentations/build.mjs)；[版本配置](presentations/status.json)。后续每次形成实质研究进展，同步更新 PPT 和 README，并保留旧版本。模板及 PPT 输出保存在本地忽略目录，不随 Git 推送；源代码与维护规则进入版本管理。
+[维护说明](presentations/README.md)；[生成源](presentations/build.mjs)；[版本配置](presentations/status.json)。后续仅在大阶段完成或用户明确要求时更新PPT并保留旧版本；日常步骤只更新README和Git。模板及 PPT 输出保存在本地忽略目录，不随 Git 推送；源代码与维护规则进入版本管理。
 
 检查：13页逐页视觉检查、PPT结构和几何检查通过（零发现），Artifact Tool重导入成功。自动finalizer受本机realpath EPERM阻挡，未完成该完整流水线；已采用独立检查后输出副本，未在PowerPoint原生程序验证。本次未启动训练、未同步服务器；研究成绩未改变。Git同步状态以本次提交和实际推送结果为准。
 
@@ -419,3 +419,11 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 - 本轮未连接服务器、未训练、未调参，权重仍待备份。当前仍为P2；下一步边界专用评价及P3模块接口核对。Git本地与推送结果见下方执行记录。
 
 2026-10-14 Git执行结果：研究分析与PPT源已本地提交 85c6bf3；push失败，仍是凭据管理器/MSYS NtCreateDirectoryObject 0xC0000022。尚未同步GitHub或服务器。
+
+## 15. 2026-10-14：阶段汇报整合与更新频率调整
+
+用户调整要求：以后仅在大阶段完成或明确要求汇报时更新PPT。日常步骤仅更新README和Git，不再每次生成、渲染PPT；实验材料先积累在报告中。该规则替代此前按每次实质进展更新PPT的约定，已同步AGENTS与presentations/README。
+
+[当前统一阶段汇报：整合版v3，16页](presentations/output/水下实例分割阶段汇报_20261014_整合版_v3.pptx)。合并v1正式基线与v2全量诊断，去重保留原模板，增加两种评估口径的说明；研究进展仍为P2，未新增实验或修改成绩。旧版保留。
+
+自动finalizer仍因realpath EPERM未完成；独立结构/几何检查零发现，重导入16页通过，修改页面已视觉检查；未在PowerPoint原生程序验证。PPT成品本地保存，生成源和规则进入Git；远程同步以本次实际执行结果为准。

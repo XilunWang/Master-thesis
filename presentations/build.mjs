@@ -20,14 +20,14 @@ for(const slide of proto.slides){slide.elements=[];slide.speakerNotes=undefined;
 const p=Presentation.load(proto);p.slides.keep([0,1,5]);
 const cover=p.slides.items[0], base=p.slides.items[1], close=p.slides.items[2];
 const content=[base]; for(let i=1;i<11;i++) content.push(base.duplicate());
-const diagnostics=base.duplicate(), errors=base.duplicate();
-p.slides.reorder([cover,...content.slice(0,9),diagnostics,errors,...content.slice(9),close].map(s=>'sl/'+s.id));
+const diagnostics=base.duplicate(), errors=base.duplicate(), protocol=base.duplicate();
+p.slides.reorder([cover,...content.slice(0,9),protocol,diagnostics,errors,...content.slice(9),close].map(s=>'sl/'+s.id));
 const teal='#008899',ink='#172126';
 function tx(s,text,x,y,w,h,size=24,opts={}){
  const a=s.shapes.add({geometry:'textbox',name:opts.name||text.slice(0,24),position:{left:x,top:y,width:w,height:h},fill:'none',line:{fill:'none',width:0}});
  a.text=text;a.text.style={typeface:opts.font||'黑体',fontSize:size,color:opts.color||ink,bold:opts.bold||false,alignment:opts.align||'left',verticalAlignment:'middle',wrap:true,insets:{left:0,right:0,top:0,bottom:0}};return a;
 }
-function heading(s,n,title){tx(s,'水下实例分割研究进展',178,37,655,40,24,{color:teal,font:'宋体'});tx(s,`${n}. ${title}`,38,107,1170,48,28,{color:teal,font:'宋体',bold:true});}
+function heading(s,n,title){tx(s,'水下实例分割研究进展',178,37,655,40,24,{color:teal,font:'宋体'});tx(s,title,38,107,1170,48,28,{color:teal,font:'宋体',bold:true});}
 function note(s,t,src='README.md'){s.speakerNotes.text=t+'\n\n数据来源：'+src;}
 function line(s,t,y,size=26){return tx(s,t,65,y,1145,66,size);}
 async function pic(s,i,x,y,w,h){s.images.add({blob:new Uint8Array(await fs.readFile(path.join(EVAL,`examples/${i}.jpg`))).buffer,contentType:'image/jpeg',alt:`UIIS 固定第${i+1}张：左侧人工标注，右侧预测`,fit:'contain',position:{left:x,top:y,width:w,height:h}});}
@@ -37,15 +37,15 @@ function table(s,values,x,y,w,h,widths){const t=s.tables.add({rows:values.length
 const m=metrics.metrics;const v=k=>(m[k]*100).toFixed(1);
 // Template cover and footer artwork remain inherited from its original layout.
 tx(cover,'水下场景实例分割研究',130,228,1020,60,44,{font:'宋体',align:'center',bold:true});
-tx(cover,'Mask2Former 基线实验与后续研究计划',140,296,1000,42,28,{font:'宋体',align:'center'});
-tx(cover,'阶段进展汇报',400,453,480,50,28,{align:'center'});
+tx(cover,'Mask2Former 基线结果、误差诊断与研究计划',140,296,1000,42,28,{font:'宋体',align:'center'});
+tx(cover,'阶段汇报 · 整合版',400,453,480,50,28,{align:'center'});
 tx(cover,status.date,965,599,245,44,28,{font:'宋体',align:'right'});
 note(cover,'本次汇报涵盖基线实验、错误案例和后续路线。尚未提出并验证自有改进模型。模板中的汇报人姓名不沿用。');
 let s=content[0];heading(s,1,'研究目标与当前进展');
 line(s,'研究任务：识别水下物体类别，并分别分割每一个实例',203);
 line(s,'已完成：UIIS 数据核验、训练恢复流程、36 轮正式基线',307);
 line(s,`当前结果：691 张测试图，实例分割 AP ${v('coco/segm_mAP')}`,411);
-line(s,'当前阶段：分析基线问题，准备首个模块适配',515);
+line(s,'当前阶段：全量阈值诊断已完成，待边界评价与模块适配',515);
 note(s,'第一研究点以 Mask2Former 为基线，候选模块来自 WaterMask。第二研究点仍未最终确定。本次没有模块改进成绩。');
 s=content[1];heading(s,2,'UIIS 数据集与使用规则');
 table(s,[['划分','图片数','实例数'],['训练集','3937','24626'],['测试集','691','3784']],65,196,670,207,[300,175,195]);
@@ -67,7 +67,7 @@ s=content[4];heading(s,5,'小目标与不同类别的表现');
 table(s,[['目标尺寸','分割 AP'],['小目标',v('coco/segm_mAP_s')],['中目标',v('coco/segm_mAP_m')],['大目标',v('coco/segm_mAP_l')]],65,205,450,248,[290,160]);
 const cats=[['类别','分割 AP'],...['fish','reefs','aquatic plants','wrecks/ruins','human divers','robots','sea-floor'].map(k=>[k,v('coco/'+k+'_precision')])];
 table(s,cats,605,185,610,400,[420,190]);
-tx(s,'小目标 AP 较低\n具体原因仍需误差分析',65,503,490,95,26,{color:teal});
+tx(s,'小目标 AP 较低\n后文结合阈值诊断分析',65,503,490,95,26,{color:teal});
 note(s,'类别 AP 字段名为 coco/类别_precision，来自最后的 segm classwise 评估。小目标 AP 低不直接证明边界模块是解决办法。类别样本不均衡，robots 测试实例仅17。','reports/uiis-baseline-36e-evaluation/metrics.json；data/UIIS/annotations/val.json');
 s=content[5];heading(s,6,'与 WaterMask 官方结果的参考比较');
 table(s,[['方法','AP','AP50','AP75'],['WaterMask R50，官方 3×','26.4','43.6','28.8'],['WaterMask R101，官方 3×','27.2','43.7','29.3'],['本次 Mask2Former R50',v('coco/segm_mAP'),v('coco/segm_mAP_50'),v('coco/segm_mAP_75')]],65,191,1150,255,[610,180,180,180]);
@@ -91,6 +91,13 @@ table(s,[['阶段','计划交付'],['近期：完成 P2/P3','已完成诊断图�
 tx(s,'需要讨论：第一点优先解决哪类错误？第二点如何形成独立贡献？',65,534,1150,92,27,{color:teal});
 note(s,'第二点未定案。TIDE 可作诊断工具，本身不自动构成创新。当前已有完整基线，尚无自有改进成绩。下一次汇报重点是问题证据与适配方案，不承诺预期涨点。','README.md 第2节、第12节');
 
+
+heading(protocol,10,'整体评估与误差诊断的关系');
+table(protocol,[['比较项','正式基线评估','全量误差诊断'],['数据来源','第36轮，691张测试图','同一权重、同一批预测'],['回答的问题','总体分割表现如何','漏检与误报体现在哪里'],['指标口径','COCO AP / AP50 / AP75','固定IoU 0.5，三档置信度'],['已完成产出','AP 32.6，类别及尺寸AP','匹配统计、错误分组、诊断图'],['后续用途','改进模型的成绩对照','确定研究问题及适配动机']],65,185,1150,330,[230,460,460]);
+tx(protocol,'未重新训练，正式 AP 仍为 32.6',65,545,1150,48,28,{color:teal});
+tx(protocol,'匹配率不是 AP，不能把两种数值的差异当作精度提升',65,606,1150,38,24);
+note(protocol,'整合v1正式基线与v2诊断进展，避免将两套统计误认为两次模型实验。诊断处理36个crowd标注，普通标注3748个。','reports/uiis-baseline-36e-evaluation/metrics.json；reports/uiis-error-analysis/diagnostics.json');
+
 const diag=JSON.parse(await fs.readFile(path.join(ROOT,'reports/uiis-error-analysis/diagnostics.json'),'utf8'));
 heading(diagnostics,10,'全量诊断：小目标更容易未匹配');
 table(diagnostics,[['置信度阈值','预测数','匹配数','未匹配标注'],...['0.3','0.5','0.7'].map(t=>[t,...['predictions','matched','missed'].map(k=>String(diag.totals[t][k]))])],65,185,1150,245,[340,270,270,270]);
@@ -108,5 +115,5 @@ const candidate=path.join(BUILD,'candidate.pptx');await (await PresentationFile.
 for(let i=0;i<p.slides.items.length;i++){await fs.writeFile(path.join(BUILD,`slide-${i+1}.png`),new Uint8Array(await (await p.export({slide:p.slides.items[i],format:'png',scale:1})).arrayBuffer()));}
 const {finalizePresentation}=await import(pathToFileURL(path.join(SKILL,'container_tools/artifact_tool_utils.mjs')).href);
 const hash=crypto.createHash('sha256').update(await fs.readFile(TEMPLATE)).digest('hex');
-const result=await finalizePresentation({workspaceDir:ROOT,candidatePath:candidate,finalPath,pythonExecutable:path.join(RUNTIME,'python/python.exe'),integrityValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-heading-fit'],requiredNativeTableOwnerSlides:[3,4,5,6,7,11,12,14],fontPolicy:{basis:'reference',families:['宋体','黑体'],referencePath:TEMPLATE,referenceSha256:hash},verifyArtifactToolImport:true,receiptPath:path.join(BUILD,status.outputName+'.validation.json')});
+const result=await finalizePresentation({workspaceDir:ROOT,candidatePath:candidate,finalPath,pythonExecutable:path.join(RUNTIME,'python/python.exe'),integrityValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_package_integrity.py'),layoutValidatorPath:path.join(SKILL,'container_tools/inspect_presentation_layout_geometry.py'),layoutArgs:['--expected-slide-size-emu','12192000,6858000','--validate-heading-fit'],requiredNativeTableOwnerSlides:[3,4,5,6,7,11,12,13,15],fontPolicy:{basis:'reference',families:['宋体','黑体'],referencePath:TEMPLATE,referenceSha256:hash},verifyArtifactToolImport:true,receiptPath:path.join(BUILD,status.outputName+'.validation.json')});
 console.log(JSON.stringify(result));
