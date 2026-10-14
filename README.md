@@ -427,3 +427,5 @@ cat reports/uiis-baseline-36e-evaluation/exit-code.txt
 [当前统一阶段汇报：整合版v3，16页](presentations/output/水下实例分割阶段汇报_20261014_整合版_v3.pptx)。合并v1正式基线与v2全量诊断，去重保留原模板，增加两种评估口径的说明；研究进展仍为P2，未新增实验或修改成绩。旧版保留。
 
 自动finalizer仍因realpath EPERM未完成；独立结构/几何检查零发现，重导入16页通过，修改页面已视觉检查；未在PowerPoint原生程序验证。PPT成品本地保存，生成源和规则进入Git；远程同步以本次实际执行结果为准。
+
+本次本地提交已完成（主改动 ab86ec0）；GitHub push仍因凭据管理器/MSYS 0xC0000022失败，未同步远程。
